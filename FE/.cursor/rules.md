@@ -1,0 +1,3 @@
+- Update UI thì nên update theo các mã màu có sẵn trong uno nhé, nếu như không có mã màu ý và mã màu khác trong config quá thì tạo thêm vào file unoconfig
+- tôi dùng uno transformerVariantGroup nên hãy cố gắng group lại các class cùng tiền tố, ví dụ text-sm text-red => text-(sm red)
+- cố gắng dùng các class shortcut trong uno

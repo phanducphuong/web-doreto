@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Cấu hình Claude Code cục bộ
+.claude/
+
+# Lịch sử git GitLab cũ (giữ làm dự phòng, không đưa lên GitHub)
+.git-gitlab-backup/
+FE/.git-gitlab-backup/
+BE/.git-gitlab-backup/
+
+# Cấu hình MCP cục bộ của Cursor (chứa API key bí mật, không đưa lên GitHub)
+.cursor/mcp.json
+**/.cursor/mcp.json

@@ -1,0 +1,47 @@
+{
+  "name": "fe",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "start": "nuxt start",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/image": "2.0.0",
+    "@pinia/nuxt": "^0.11.3",
+    "@tiptap/extension-color": "^3.21.0",
+    "@tiptap/extension-details": "^3.21.0",
+    "@tiptap/extension-image": "^3.21.0",
+    "@tiptap/extension-text-style": "^3.21.0",
+    "@tiptap/pm": "^3.21.0",
+    "@tiptap/starter-kit": "^3.21.0",
+    "@tiptap/vue-3": "^3.21.0",
+    "cropperjs": "^1.6.2",
+    "dayjs": "^1.11.20",
+    "highcharts": "^12.6.0",
+    "lucide-vue-next": "^1.0.0",
+    "mitt": "^3.0.1",
+    "nuxt": "^4.4.2",
+    "nuxt-toast": "^1.4.0",
+    "photoswipe": "^5.4.4",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.30",
+    "vue-router": "^5.0.3"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@unocss/nuxt": "^66.6.7",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-vue": "^10.8.0",
+    "sass-embedded": "^1.99.0",
+    "unocss": "^66.6.7",
+    "vue-eslint-parser": "^10.4.0"
+  }
+}

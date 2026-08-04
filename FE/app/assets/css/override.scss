@@ -1,0 +1,156 @@
+:root {
+  --izi-success: #15803d;
+  --izi-error: #b91c1c;
+  --izi-warning: #c2410c;
+  --izi-info: #1d4ed8;
+
+  --izi-success-bg: #dcfce7;
+  --izi-success-border: #4ade80;
+  --izi-success-progress: #22c55e;
+
+  --izi-error-bg: #fee2e2;
+  --izi-error-border: #f87171;
+  --izi-error-progress: #ef4444;
+
+  --izi-warning-bg: #ffedd5;
+  --izi-warning-border: #fb923c;
+  --izi-warning-progress: #f97316;
+
+  --izi-info-bg: #dbeafe;
+  --izi-info-border: #60a5fa;
+  --izi-info-progress: #3b82f6;
+}
+
+:where(.css-dev-only-do-not-override-tchc97).ant-modal {
+  font-family: "Manrope", sans-serif !important;
+}
+
+.iziToast-wrapper {
+  z-index: 99999 !important;
+}
+
+.iziToast {
+  font-family: "Manrope", sans-serif !important;
+  min-height: 52px !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+  border-style: solid !important;
+  border-width: 1px !important;
+  box-shadow: none !important;
+
+  > .iziToast-body .iziToast-title,
+  > .iziToast-body .iziToast-message {
+    white-space: break-spaces;
+  }
+
+  > .iziToast-body .iziToast-texts {
+    margin-inline-start: 12px !important;
+  }
+
+  > .iziToast-progressbar {
+    height: 2px !important;
+  }
+
+  > .iziToast-progressbar > div {
+    height: 2px !important;
+    border-radius: 0 !important;
+  }
+
+  > .iziToast-body .iziToast-icon {
+    background-size: 85% !important;
+    background-position: 50% 50% !important;
+    background-repeat: no-repeat !important;
+  }
+}
+
+/* SVG icons — thay PNG mặc định để khớp màu theme */
+$izi-icon-success: "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'%2315803d'%3E%3Cpath%20d%3D'M12%202C6.48%202%202%206.48%202%2012s4.48%2010%2010%2010%2010-4.48%2010-10S17.52%202%2012%202zm-2%2015l-5-5%201.41-1.41L10%2014.17l7.59-7.59L19%208l-9%209z'%2F%3E%3C%2Fsvg%3E";
+$izi-icon-error: "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'%23b91c1c'%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M12%202.25c-5.385%200-9.75%204.365-9.75%209.75s4.365%209.75%209.75%209.75%209.75-4.365%209.75-9.75S17.385%202.25%2012%202.25zm-1.72%206.97a.75.75%200%2010-1.06%201.06L10.94%2012l-1.72%201.72a.75.75%200%20101.06%201.06L12%2013.06l1.72%201.72a.75.75%200%20101.06-1.06L13.06%2012l1.72-1.72a.75.75%200%2010-1.06-1.06L12%2010.94l-1.72-1.72z'%20clip-rule%3D'evenodd'%2F%3E%3C%2Fsvg%3E";
+$izi-icon-warning: "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'%23c2410c'%3E%3Cpath%20d%3D'M12%202%202%2020h20L12%202zm0%2015a1%201%200%20100-2%201%201%200%20000%202zm1-6h-2V7h2v4z'%2F%3E%3C%2Fsvg%3E";
+$izi-icon-info: "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%20fill%3D'%231d4ed8'%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M12%202.25c-5.385%200-9.75%204.365-9.75%209.75s4.365%209.75%209.75%209.75%209.75-4.365%209.75-9.75S17.385%202.25%2012%202.25zm.75%207.5a.75.75%200%2000-1.5%200v6a.75.75%200%20001.5%200v-6zm-.75-3a1.125%201.125%200%20100%202.25%201.125%201.125%200%20000-2.25z'%20clip-rule%3D'evenodd'%2F%3E%3C%2Fsvg%3E";
+
+.iziToast.iziToast-color-green {
+  background: var(--izi-success-bg) !important;
+  border-color: var(--izi-success-border) !important;
+
+  > .iziToast-body .iziToast-title {
+    color: var(--izi-success) !important;
+  }
+
+  > .iziToast-body .iziToast-message {
+    color: #166534 !important;
+  }
+
+  > .iziToast-progressbar > div {
+    background: var(--izi-success-progress) !important;
+  }
+
+  > .iziToast-body .iziToast-icon.ico-success {
+    background-image: url("data:image/svg+xml,#{$izi-icon-success}") !important;
+  }
+}
+
+.iziToast.iziToast-color-red {
+  background: var(--izi-error-bg) !important;
+  border-color: var(--izi-error-border) !important;
+
+  > .iziToast-body .iziToast-title {
+    color: var(--izi-error) !important;
+  }
+
+  > .iziToast-body .iziToast-message {
+    color: #991b1b !important;
+  }
+
+  > .iziToast-progressbar > div {
+    background: var(--izi-error-progress) !important;
+  }
+
+  > .iziToast-body .iziToast-icon.ico-error {
+    background-image: url("data:image/svg+xml,#{$izi-icon-error}") !important;
+  }
+}
+
+.iziToast.iziToast-color-yellow,
+.iziToast.iziToast-color-orange {
+  background: var(--izi-warning-bg) !important;
+  border-color: var(--izi-warning-border) !important;
+
+  > .iziToast-body .iziToast-title {
+    color: var(--izi-warning) !important;
+  }
+
+  > .iziToast-body .iziToast-message {
+    color: #9a3412 !important;
+  }
+
+  > .iziToast-progressbar > div {
+    background: var(--izi-warning-progress) !important;
+  }
+
+  > .iziToast-body .iziToast-icon.ico-warning {
+    background-image: url("data:image/svg+xml,#{$izi-icon-warning}") !important;
+  }
+}
+
+.iziToast.iziToast-color-blue {
+  background: var(--izi-info-bg) !important;
+  border-color: var(--izi-info-border) !important;
+
+  > .iziToast-body .iziToast-title {
+    color: var(--izi-info) !important;
+  }
+
+  > .iziToast-body .iziToast-message {
+    color: #1e40af !important;
+  }
+
+  > .iziToast-progressbar > div {
+    background: var(--izi-info-progress) !important;
+  }
+
+  > .iziToast-body .iziToast-icon.ico-info,
+  > .iziToast-body .iziToast-icon.ico-question {
+    background-image: url("data:image/svg+xml,#{$izi-icon-info}") !important;
+  }
+}

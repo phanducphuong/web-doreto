@@ -1,0 +1,168 @@
+/* @font-face {
+  font-family: "Manrope";
+  src: url("~/assets/fonts/Manrope/manrope-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Manrope";
+  src: url("~/assets/fonts/Manrope/manrope-medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Manrope";
+  src: url("~/assets/fonts/Manrope/manrope-semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Manrope";
+  src: url("~/assets/fonts/Manrope/manrope-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Noto Serif";
+  src: url("~/assets/fonts/Noto_Serif/noto-serif-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Noto Serif";
+  src: url("~/assets/fonts/Noto_Serif/noto-serif-medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Noto Serif";
+  src: url("~/assets/fonts/Noto_Serif/noto-serif-semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: auto;
+}
+
+@font-face {
+  font-family: "Noto Serif";
+  src: url("~/assets/fonts/Noto_Serif/noto-serif-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: auto;
+} */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+
+  margin-block-start: 0;
+  margin-block-end: 0;
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+
+  padding-block-start: 0;
+  padding-block-end: 0;
+  padding-inline-start: 0;
+  padding-inline-end: 0;
+
+  border-width: 0;
+  border-style: solid;
+  border-color: currentColor;
+
+  font-size: 100%;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+
+  vertical-align: baseline;
+  text-align: left;
+  text-indent: 0;
+  text-shadow: none;
+  text-transform: none;
+  text-overflow: clip;
+  text-decoration: none;
+  font-size: inherit;
+}
+
+s,
+del,
+strike {
+  text-decoration: line-through;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Chặn véo-zoom và chạm-đúp-zoom toàn trang: touch-action phải đặt trên chính phần tử
+   được chạm nên áp cho mọi phần tử trong body. Riêng trình xem ảnh PhotoSwipe (.pswp)
+   giữ touch-action: none để nó tự xử lý véo phóng to ảnh. */
+html,
+body,
+body * {
+  touch-action: pan-x pan-y;
+}
+
+.pswp,
+.pswp * {
+  touch-action: none;
+}
+
+body {
+  color: #6b554f;
+  @apply bg-bg-body;
+  font-family: "TikTok Sans", sans-serif;
+  /* Khoá kéo ngang trang: phần tử tràn ra ngoài bị cắt, không tạo vùng cuộn ngang */
+  overflow-x: clip;
+}
+
+/* iOS Safari TỰ PHÓNG TO TRANG khi focus ô nhập liệu có chữ < 16px (gây vỡ header khi zoom ngược).
+   Ép cỡ chữ tối thiểu 16px cho mọi ô nhập trên mobile để chặn hẳn auto-zoom. */
+@media (max-width: 1023px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "TikTok Sans", sans-serif;
+} */
+
+html {
+  scrollbar-gutter: stable;
+  overscroll-behavior: none;
+}
+
+html.app-transitions-enabled .page-enter-active,
+html.app-transitions-enabled .page-leave-active {
+  transition: opacity 0.24s ease;
+}
+
+html.app-transitions-enabled .page-enter-from,
+html.app-transitions-enabled .page-leave-to {
+  opacity: 0;
+}
+
+body:has(.modal, .drawer-container-opened) {
+  overflow: hidden;
+}

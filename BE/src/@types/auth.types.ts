@@ -1,0 +1,17 @@
+import { Role } from 'src/common/enums/role.enum';
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role: Role;
+}
+
+export interface AuthUser {
+  userId: string;
+  email: string;
+  role: Role;
+}
+
+export interface RequestWithUser extends Request {
+  user: JwtPayload;
+}
