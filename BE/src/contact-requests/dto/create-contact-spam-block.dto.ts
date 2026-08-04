@@ -1,5 +1,5 @@
 import { IsEnum, IsString, MinLength } from 'class-validator';
-import { ContactSpamKind } from '../schemas/contact-spam-block.schema';
+import { ContactSpamKind } from '@prisma/client';
 
 export class CreateContactSpamBlockDto {
   @IsEnum(ContactSpamKind)

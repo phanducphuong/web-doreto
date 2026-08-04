@@ -8,7 +8,6 @@ import {
   Param,
   Query,
   UseGuards,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { FeedbackProductsService } from './feedback-products.service';
 import { CreateFeedbackProductDto } from './dto/create-feedback-product.dto';
@@ -52,20 +51,20 @@ export class FeedbackProductsController {
 
   @Public()
   @Get('product/:productId')
-  findByProductId(@Param('productId', ParseIntPipe) productId: number) {
+  findByProductId(@Param('productId') productId: string) {
     return this.feedbackProductsService.findByProductId(productId);
   }
 
   @Public()
   @Get('product/:productId/average')
-  getAverage(@Param('productId', ParseIntPipe) productId: number) {
+  getAverage(@Param('productId') productId: string) {
     return this.feedbackProductsService.getAverageByProductId(productId);
   }
 
   @Get('my/:productId')
   findMyFeedback(
     @CurrentUser('userId') userId: string,
-    @Param('productId', ParseIntPipe) productId: number,
+    @Param('productId') productId: string,
   ) {
     return this.feedbackProductsService.findByUserAndProduct(userId, productId);
   }

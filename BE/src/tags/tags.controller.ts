@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   UseGuards,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { TagsService } from './tags.service';
 import { CreateTagDto } from './dto/create-tag.dto';
@@ -35,19 +34,19 @@ export class TagsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.tagsService.findOne(id);
   }
 
   @Roles(Role.ADMIN)
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTagDto) {
+  update(@Param('id') id: string, @Body() dto: UpdateTagDto) {
     return this.tagsService.update(id, dto);
   }
 
   @Roles(Role.ADMIN)
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.tagsService.remove(id);
   }
 }

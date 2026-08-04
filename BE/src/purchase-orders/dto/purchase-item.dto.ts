@@ -1,11 +1,10 @@
-import { IsString, IsNumber, Min, IsMongoId } from 'class-validator';
+import { IsNumber, Min, IsUUID } from 'class-validator';
 
 export class PurchaseItemDto {
-  @IsString()
-  @IsMongoId()
+  @IsUUID()
   productOptionValueId: string;
 
-  @IsNumber()
+  @IsUUID()
   productId: string;
 
   @IsNumber()

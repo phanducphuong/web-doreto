@@ -25,8 +25,8 @@
 
       <template #actions="{ row }">
         <div class="flex items-center gap-2">
-          <AtomsButton type="outline" @click="openEditModal(Number(row._id))">Sửa</AtomsButton>
-          <AtomsButton type="danger" @click="onDelete(Number(row._id))">Xóa</AtomsButton>
+          <AtomsButton type="outline" @click="openEditModal(row._id)">Sửa</AtomsButton>
+          <AtomsButton type="danger" @click="onDelete(row._id)">Xóa</AtomsButton>
         </div>
       </template>
     </AtomsTable>
@@ -90,7 +90,7 @@ import type { TTableColumn } from "~/types/table.type";
 import { Plus } from "lucide-vue-next";
 
 type TTagForm = {
-  id?: number;
+  id?: string;
   name: string;
   icon: string;
   order: string;
@@ -160,7 +160,7 @@ const openCreateModal = () => {
   nextTick(() => tagModalRef.value?.openModal());
 };
 
-const openEditModal = async (id: number) => {
+const openEditModal = async (id: string) => {
   formMode.value = "edit";
   formErrors.value = {};
 
@@ -168,7 +168,7 @@ const openEditModal = async (id: number) => {
   if (!tagDetail) return;
 
   tagForm.value = {
-    id: Number(tagDetail._id),
+    id: tagDetail._id,
     name: tagDetail.name,
     icon: tagDetail.icon || "",
     order: String(tagDetail.order ?? ""),
@@ -239,7 +239,7 @@ const submitForm = async () => {
   }
 };
 
-const onDelete = async (id: number) => {
+const onDelete = async (id: string) => {
   const confirmed = window.confirm("Bạn có chắc chắn muốn xóa tag này?");
   if (!confirmed) return;
 

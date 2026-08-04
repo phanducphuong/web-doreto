@@ -1,33 +1,23 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
-import { InjectModel } from '@nestjs/mongoose';
-import { Category, CategoryDocument } from './schemas/category.schema';
-import { Model } from 'mongoose';
-import { BaseService } from 'src/common/base/base.service';
-import { Product, ProductDocument } from 'src/products/schemas/product.schema';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
-export class CategoriesService extends BaseService<CategoryDocument> {
-  constructor(
-    @InjectModel(Category.name)
-    private readonly categoryModel: Model<CategoryDocument>,
-    @InjectModel(Product.name)
-    private readonly productModel: Model<ProductDocument>,
-  ) {
-    super(categoryModel);
-  }
+export class CategoriesService {
+  constructor(private readonly prisma: PrismaService) {}
 
-  private async checkDuplicateName(name: string, excludeId?: number) {
-    const query: any = {
-      name: { $regex: `^${name}$`, $options: 'i' },
-    };
-
-    if (excludeId) {
-      query._id = { $ne: excludeId };
-    }
-
-    const existingCategory = await this.categoryModel.findOne(query);
+  private async checkDuplicateName(name: string, excludeId?: string) {
+    const existingCategory = await this.prisma.category.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
 
     if (existingCategory) {
       throw new ConflictException(
@@ -38,53 +28,73 @@ export class CategoriesService extends BaseService<CategoryDocument> {
 
   async create(createCategoryDto: CreateCategoryDto) {
     await this.checkDuplicateName(createCategoryDto.name);
-
-    return super.create(createCategoryDto);
+    return this.prisma.category.create({ data: { ...createCategoryDto } });
   }
 
-  async update<CategoryDocument>(
-    id: number,
-    updateCategoryDto: UpdateCategoryDto,
-  ) {
+  async findAll() {
+    return this.prisma.category.findMany({
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async findOne(id: string) {
+    const category = await this.prisma.category.findUnique({ where: { id } });
+    if (!category) {
+      throw new NotFoundException('Not found');
+    }
+    return category;
+  }
+
+  async update(id: string, updateCategoryDto: UpdateCategoryDto) {
     if (updateCategoryDto.name) {
       await this.checkDuplicateName(updateCategoryDto.name, id);
     }
 
-    return super.update<CategoryDocument>(id, updateCategoryDto);
+    try {
+      return await this.prisma.category.update({
+        where: { id },
+        data: { ...updateCategoryDto },
+      });
+    } catch {
+      throw new NotFoundException('Not found');
+    }
+  }
+
+  async remove(id: string) {
+    try {
+      return await this.prisma.category.delete({ where: { id } });
+    } catch {
+      throw new NotFoundException('Not found');
+    }
   }
 
   async getTopCategories() {
-    return this.categoryModel
-      .find({ parentId: null })
-      .sort({ order: 1 })
-      .populate('parentId', 'name')
-      .exec();
+    return this.prisma.category.findMany({
+      where: { parentId: null },
+      orderBy: { order: 'asc' },
+    });
   }
 
-  async getProductCountByCategory() {
-    const [categories, counts] = await Promise.all([
-      this.categoryModel.find({}, { _id: 1 }).lean(),
-      this.productModel.aggregate<{ _id: number; count: number }>([
-        { $unwind: '$categoryIds' },
-        {
-          $group: {
-            _id: '$categoryIds',
-            count: { $sum: 1 },
-          },
-        },
-      ]),
+  /** Đếm số sản phẩm theo từng danh mục (dùng bảng nối product_categories). */
+  async getProductCountByCategory(): Promise<Record<string, number>> {
+    const [categories, grouped] = await Promise.all([
+      this.prisma.category.findMany({ select: { id: true } }),
+      this.prisma.productCategory.groupBy({
+        by: ['categoryId'],
+        _count: { _all: true },
+      }),
     ]);
 
-    const countMap = new Map<number, number>(
-      counts.map((item) => [item._id, item.count]),
+    const countMap = new Map<string, number>(
+      grouped.map((item) => [item.categoryId, item._count._all]),
     );
 
     return categories.reduce(
       (acc, category) => {
-        acc[category._id] = countMap.get(category._id) ?? 0;
+        acc[category.id] = countMap.get(category.id) ?? 0;
         return acc;
       },
-      {} as Record<number, number>,
+      {} as Record<string, number>,
     );
   }
 }

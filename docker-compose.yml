@@ -1,0 +1,25 @@
+# Postgres local cho dự án Doreto (chỉ dùng khi phát triển ở máy).
+# Mọi dev chạy `docker compose up -d` là có Postgres giống hệt nhau, không phải tự cài.
+# Production dùng Cloud SQL trên Google Cloud, không dùng file này.
+services:
+  postgres:
+    image: postgres:16-alpine
+    # Tên container/volume/cổng khác với dự án "web decor" để hai dự án chạy song song được
+    container_name: doreto-fashion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: doreto
+      POSTGRES_PASSWORD: doreto_secret
+      POSTGRES_DB: doreto_web
+    ports:
+      - "5433:5432"
+    volumes:
+      - doreto_fashion_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doreto -d doreto_web"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  doreto_fashion_pgdata:

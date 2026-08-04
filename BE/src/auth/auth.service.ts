@@ -70,15 +70,15 @@ export class AuthService {
     const user = await this.usersService.create(userData);
 
     const token = await this.generateTokens({
-      sub: String(user._id),
+      sub: String(user.id),
       email: user.email,
-      role: user.role,
+      role: user.role as Role,
     });
 
     return {
       message: 'User created successfully',
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
         phoneNumber: user.phoneNumber,
@@ -104,15 +104,15 @@ export class AuthService {
     }
 
     const payload: JwtPayload = {
-      sub: String(user._id),
+      sub: String(user.id),
       email: user.email,
-      role: user.role,
+      role: user.role as Role,
     };
 
     const token = await this.generateTokens(payload);
     return {
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         phoneNumber: user.phoneNumber,
         name: user.name,

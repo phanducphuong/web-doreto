@@ -39,7 +39,7 @@ export default function useProduct() {
     }
   };
 
-  const deleteProduct = async (productId: number): Promise<boolean> => {
+  const deleteProduct = async (productId: string): Promise<boolean> => {
     try {
       loadingStates.value.delete = true;
       // TODO: Comment tạm thời để test, sẽ mở lại sau khi hoàn thành phần message service

@@ -1,8 +1,12 @@
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class AddressDto {
+  @IsOptional()
   @IsString()
-  name: string; // Tên địa chỉ
+  addressName?: string; // Tên gợi nhớ địa chỉ (vd "Nhà riêng")
+
+  @IsString()
+  name: string; // Tên người nhận
 
   @IsString()
   detailedAddress: string; // Địa chỉ cụ thể

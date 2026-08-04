@@ -17,14 +17,12 @@ export class FilterProductDto {
   maxPrice?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  categoryId?: number;
+  @IsString()
+  categoryId?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  tagId?: number;
+  @IsString()
+  tagId?: string;
 
   @IsOptional()
   @IsString()

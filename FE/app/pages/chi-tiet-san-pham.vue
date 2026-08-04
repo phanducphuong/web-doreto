@@ -286,13 +286,13 @@ const { isLg } = useDeviceBreakpoint();
 const { data: product } = await useAsyncData(
   `${route.params.slug}-I${route.params.id}`,
   async () => {
-    const product = await $productRepository.getOne(Number(id));
+    const product = await $productRepository.getOne(id as string);
     return product;
   },
 );
 
 const { data: relatedProductsData } = await useAsyncData(`related-products-${id}`, () =>
-  $productRepository.getRelatedProducts(Number(id)),
+  $productRepository.getRelatedProducts(id as string),
 );
 const relatedProducts = computed(() => relatedProductsData.value ?? []);
 

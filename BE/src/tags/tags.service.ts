@@ -1,30 +1,23 @@
-import { Injectable, ConflictException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Tag, TagDocument } from './schemas/tag.schema';
-import { BaseService } from 'src/common/base/base.service';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 
 @Injectable()
-export class TagsService extends BaseService<TagDocument> {
-  constructor(
-    @InjectModel(Tag.name)
-    private readonly tagModel: Model<TagDocument>,
-  ) {
-    super(tagModel);
-  }
+export class TagsService {
+  constructor(private readonly prisma: PrismaService) {}
 
-  private async checkDuplicateName(name: string, excludeId?: number) {
-    const query: any = {
-      name: { $regex: `^${name}$`, $options: 'i' },
-    };
-
-    if (excludeId) {
-      query._id = { $ne: excludeId };
-    }
-
-    const existing = await this.tagModel.findOne(query);
+  private async checkDuplicateName(name: string, excludeId?: string) {
+    const existing = await this.prisma.tag.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
     if (existing) {
       throw new ConflictException(`Tag with name "${name}" already exists`);
     }
@@ -32,17 +25,43 @@ export class TagsService extends BaseService<TagDocument> {
 
   async create(dto: CreateTagDto) {
     await this.checkDuplicateName(dto.name);
-    return super.create(dto);
+    return this.prisma.tag.create({ data: { ...dto } });
   }
 
   async findAllActive() {
-    return this.tagModel.find({ isActive: true }).sort({ order: 1 }).exec();
+    return this.prisma.tag.findMany({
+      where: { isActive: true },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
   }
 
-  async update<Y = TagDocument>(id: number, dto: UpdateTagDto) {
+  async findOne(id: string) {
+    const tag = await this.prisma.tag.findUnique({ where: { id } });
+    if (!tag) {
+      throw new NotFoundException('Not found');
+    }
+    return tag;
+  }
+
+  async update(id: string, dto: UpdateTagDto) {
     if (dto.name) {
       await this.checkDuplicateName(dto.name, id);
     }
-    return super.update<Y>(id, dto);
+    try {
+      return await this.prisma.tag.update({
+        where: { id },
+        data: { ...dto },
+      });
+    } catch {
+      throw new NotFoundException('Not found');
+    }
+  }
+
+  async remove(id: string) {
+    try {
+      return await this.prisma.tag.delete({ where: { id } });
+    } catch {
+      throw new NotFoundException('Not found');
+    }
   }
 }

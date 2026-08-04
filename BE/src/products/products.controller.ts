@@ -8,7 +8,6 @@ import {
   Delete,
   UseGuards,
   Query,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -62,7 +61,7 @@ export class ProductsController {
   @Public()
   @Get('related')
   getRelatedProducts(@Query('productId') productId: string) {
-    return this.productsService.getRelatedProducts(Number(productId));
+    return this.productsService.getRelatedProducts(productId);
   }
 
   @Public()
@@ -74,7 +73,7 @@ export class ProductsController {
 
     const productIds = Array.isArray(rawProductIds)
       ? rawProductIds.filter(
-          (productId): productId is number => typeof productId === 'number',
+          (productId): productId is string => typeof productId === 'string',
         )
       : [];
     const keywords = Array.isArray(rawKeywords)
@@ -93,14 +92,14 @@ export class ProductsController {
 
   @Public()
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }
 
   @Roles(Role.ADMIN)
   @Patch(':id')
   update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
   ) {
     return this.productsService.update(id, updateProductDto);
@@ -108,7 +107,7 @@ export class ProductsController {
 
   @Roles(Role.ADMIN)
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.productsService.remove(id);
   }
 }

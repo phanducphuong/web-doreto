@@ -1,41 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import {
-  PurchaseOrder,
-  PurchaseOrderDocument,
-} from 'src/purchase-orders/schemas/purchase-order.schema';
+import { Prisma } from '@prisma/client';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
-import {
-  OrderDailyReport,
-  OrderDailyReportDocument,
-} from './schemas/order-daily-report.schema';
-import {
-  ProductDailyReport,
-  ProductDailyReportDocument,
-} from './schemas/product-daily-report.schema';
+import { PrismaService } from 'src/prisma/prisma.service';
+
+interface OverviewAgg {
+  pendingCount: number;
+  deliveredCount: number;
+  cancelledCount: number;
+  totalOrders: number;
+  totalRevenue: number;
+}
 
 @Injectable()
 export class ReportingService {
-  constructor(
-    @InjectModel(PurchaseOrder.name)
-    private readonly purchaseOrderModel: Model<PurchaseOrderDocument>,
-    @InjectModel(OrderDailyReport.name)
-    private readonly orderDailyReportModel: Model<OrderDailyReportDocument>,
-    @InjectModel(ProductDailyReport.name)
-    private readonly productDailyReportModel: Model<ProductDailyReportDocument>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getOverview(fromDate?: Date, toDate?: Date) {
-    const match = this.buildOrderMatch(fromDate, toDate);
-    const current = await this.aggregateOverview(match);
+    const current = await this.aggregateOverview(fromDate, toDate);
     const totalOrders = current.totalOrders;
     const totalRevenue = current.totalRevenue;
     const deliveredCount = current.deliveredCount;
     const previousPeriod = this.buildPreviousPeriod(fromDate, toDate);
     const previous = previousPeriod
       ? await this.aggregateOverview(
-          this.buildOrderMatch(previousPeriod.fromDate, previousPeriod.toDate),
+          previousPeriod.fromDate,
+          previousPeriod.toDate,
         )
       : null;
 
@@ -78,17 +67,7 @@ export class ReportingService {
   }
 
   async getOrderFunnel(fromDate?: Date, toDate?: Date) {
-    const match = this.buildOrderMatch(fromDate, toDate);
-    const rows = await this.purchaseOrderModel
-      .aggregate([
-        { $match: match },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ])
-      .exec();
-
-    const byStatus = new Map<string, number>(
-      rows.map((row: { _id: string; count: number }) => [row._id, row.count]),
-    );
+    const byStatus = await this.countByStatus(fromDate, toDate);
 
     const pending = byStatus.get(PurchaseOrderStatus.PENDING) ?? 0;
     const confirmed = byStatus.get(PurchaseOrderStatus.CONFIRMED) ?? 0;
@@ -112,226 +91,113 @@ export class ReportingService {
   }
 
   async getOrderTimeSeries(fromDate?: Date, toDate?: Date) {
-    const match = this.buildOrderMatch(fromDate, toDate);
-    return this.purchaseOrderModel
-      .aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: {
-              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
-            },
-            orderCount: { $sum: 1 },
-            pendingCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.PENDING] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            confirmedCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.CONFIRMED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            shippedCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.SHIPPED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            deliveredCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            cancelledCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.CANCELLED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            revenue: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  '$purchasePriceDetail.summaryPrice',
-                  0,
-                ],
-              },
-            },
-          },
-        },
-        { $sort: { _id: 1 } },
-        {
-          $project: {
-            _id: 0,
-            date: '$_id',
-            orderCount: 1,
-            pendingCount: 1,
-            confirmedCount: 1,
-            shippedCount: 1,
-            deliveredCount: 1,
-            cancelledCount: 1,
-            revenue: 1,
-          },
-        },
-      ])
-      .exec();
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        date: string;
+        orderCount: number;
+        pendingCount: number;
+        confirmedCount: number;
+        shippedCount: number;
+        deliveredCount: number;
+        cancelledCount: number;
+        revenue: number;
+      }>
+    >(Prisma.sql`
+      SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS date,
+        count(*)::int AS "orderCount",
+        count(*) FILTER (WHERE status::text = 'pending')::int AS "pendingCount",
+        count(*) FILTER (WHERE status::text = 'confirmed')::int AS "confirmedCount",
+        count(*) FILTER (WHERE status::text = 'shipped')::int AS "shippedCount",
+        count(*) FILTER (WHERE status::text = 'delivered')::int AS "deliveredCount",
+        count(*) FILTER (WHERE status::text = 'cancelled')::int AS "cancelledCount",
+        coalesce(sum("summaryPrice") FILTER (WHERE status::text = 'delivered'), 0)::float8 AS revenue
+      FROM purchase_orders
+      WHERE status::text <> 'cart'${this.dateCond(fromDate, toDate)}
+      GROUP BY 1
+      ORDER BY 1
+    `);
+    return rows;
   }
 
   async getTopProducts(fromDate?: Date, toDate?: Date, limit = 10) {
-    const match = this.buildOrderMatch(fromDate, toDate);
-    const rows = await this.purchaseOrderModel
-      .aggregate([
-        { $match: { ...match, status: PurchaseOrderStatus.DELIVERED } },
-        { $unwind: '$purchaseItems' },
-        {
-          $group: {
-            _id: '$purchaseItems.productId',
-            soldQty: { $sum: '$purchaseItems.count' },
-            revenue: {
-              $sum: {
-                $multiply: ['$purchaseItems.price', '$purchaseItems.count'],
-              },
-            },
-            orderCount: { $sum: 1 },
-          },
-        },
-        {
-          $lookup: {
-            from: 'products',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'product',
-          },
-        },
-        {
-          $unwind: {
-            path: '$product',
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        { $sort: { revenue: -1 } },
-        { $limit: limit },
-        {
-          $project: {
-            _id: 0,
-            productId: '$_id',
-            productName: '$product.name',
-            soldQty: 1,
-            revenue: 1,
-            orderCount: 1,
-          },
-        },
-      ])
-      .exec();
-    return rows.map((row: any) => ({
-      ...row,
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        productId: string;
+        productName: string | null;
+        soldQty: number;
+        revenue: number;
+        orderCount: number;
+      }>
+    >(Prisma.sql`
+      SELECT pi."productId" AS "productId",
+        p.name AS "productName",
+        sum(pi.count)::int AS "soldQty",
+        coalesce(sum(pi.price * pi.count), 0)::float8 AS revenue,
+        count(*)::int AS "orderCount"
+      FROM purchase_items pi
+      JOIN purchase_orders po ON po.id = pi."orderId"
+      LEFT JOIN products p ON p.id = pi."productId"
+      WHERE po.status::text = 'delivered'${this.dateCond(fromDate, toDate, 'po')}
+      GROUP BY pi."productId", p.name
+      ORDER BY revenue DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row) => ({
+      productId: row.productId,
       productName: row.productName ?? `#${row.productId}`,
+      soldQty: row.soldQty,
+      revenue: row.revenue,
+      orderCount: row.orderCount,
     }));
   }
 
   async getTopCustomers(fromDate?: Date, toDate?: Date, limit = 10) {
-    const match = this.buildOrderMatch(fromDate, toDate);
-    const rows = await this.purchaseOrderModel
-      .aggregate([
-        {
-          $match: {
-            ...match,
-            status: PurchaseOrderStatus.DELIVERED,
-          },
-        },
-        {
-          $addFields: {
-            customerKey: {
-              $ifNull: [
-                { $toString: '$userId' },
-                {
-                  $concat: [
-                    'guest:',
-                    { $ifNull: ['$nonLoginUser.email', 'unknown'] },
-                  ],
-                },
-              ],
-            },
-            customerType: {
-              $cond: [{ $ifNull: ['$userId', false] }, 'user', 'guest'],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: '$customerKey',
-            customerType: { $first: '$customerType' },
-            userId: { $first: '$userId' },
-            guestEmail: { $first: '$nonLoginUser.email' },
-            totalRevenue: { $sum: '$purchasePriceDetail.summaryPrice' },
-            orderCount: { $sum: 1 },
-          },
-        },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'userId',
-            foreignField: '_id',
-            as: 'user',
-          },
-        },
-        {
-          $unwind: {
-            path: '$user',
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        { $sort: { totalRevenue: -1 } },
-        { $limit: limit },
-        {
-          $project: {
-            _id: 0,
-            customerKey: '$_id',
-            customerType: 1,
-            userId: 1,
-            customerName: {
-              $ifNull: ['$user.name', '$guestEmail'],
-            },
-            customerEmail: {
-              $ifNull: ['$user.email', '$guestEmail'],
-            },
-            totalRevenue: 1,
-            orderCount: 1,
-            averageOrderValue: {
-              $cond: [
-                { $eq: ['$orderCount', 0] },
-                0,
-                { $divide: ['$totalRevenue', '$orderCount'] },
-              ],
-            },
-          },
-        },
-      ])
-      .exec();
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        customerKey: string;
+        customerType: string;
+        userId: string | null;
+        userName: string | null;
+        userEmail: string | null;
+        guestEmail: string | null;
+        totalRevenue: number;
+        orderCount: number;
+      }>
+    >(Prisma.sql`
+      SELECT
+        coalesce(po."userId"::text, 'guest:' || coalesce(po."nonLoginUserEmail", 'unknown')) AS "customerKey",
+        CASE WHEN po."userId" IS NOT NULL THEN 'user' ELSE 'guest' END AS "customerType",
+        max(po."userId"::text) AS "userId",
+        max(u.name) AS "userName",
+        max(u.email) AS "userEmail",
+        max(po."nonLoginUserEmail") AS "guestEmail",
+        coalesce(sum(po."summaryPrice"), 0)::float8 AS "totalRevenue",
+        count(*)::int AS "orderCount"
+      FROM purchase_orders po
+      LEFT JOIN users u ON u.id = po."userId"
+      WHERE po.status::text = 'delivered'${this.dateCond(fromDate, toDate, 'po')}
+      GROUP BY 1, 2
+      ORDER BY "totalRevenue" DESC
+      LIMIT ${limit}
+    `);
 
-    return rows.map((row: any) => ({
-      ...row,
-      customerName: row.customerName || row.customerEmail || 'Guest',
-    }));
+    return rows.map((row) => {
+      const customerName = row.userName || row.guestEmail || 'Guest';
+      const customerEmail = row.userEmail || row.guestEmail || null;
+      return {
+        customerKey: row.customerKey,
+        customerType: row.customerType,
+        userId: row.userId,
+        customerName,
+        customerEmail,
+        totalRevenue: row.totalRevenue,
+        orderCount: row.orderCount,
+        averageOrderValue: row.orderCount
+          ? row.totalRevenue / row.orderCount
+          : 0,
+      };
+    });
   }
 
   async syncByOrderDate(sourceDate?: Date) {
@@ -350,93 +216,49 @@ export class ReportingService {
     start: Date,
     end: Date,
   ) {
-    const [row] = await this.purchaseOrderModel
-      .aggregate([
-        { $match: { createdAt: { $gte: start, $lte: end } } },
-        {
-          $group: {
-            _id: null,
-            pendingCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.PENDING] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            confirmedCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.CONFIRMED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            shippedCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.SHIPPED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            deliveredCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            cancelledCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.CANCELLED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            orderCount: { $sum: 1 },
-            grossRevenue: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  '$purchasePriceDetail.summaryPrice',
-                  0,
-                ],
-              },
-            },
-          },
-        },
-      ])
-      .exec();
+    const groups = await this.prisma.purchaseOrder.groupBy({
+      by: ['status'],
+      where: { createdAt: { gte: start, lte: end } },
+      _count: { _all: true },
+      _sum: { summaryPrice: true },
+    });
 
-    const orderCount = row?.orderCount ?? 0;
-    const grossRevenue = row?.grossRevenue ?? 0;
+    let orderCount = 0;
+    let grossRevenue = 0;
+    const counts: Record<string, number> = {};
+    for (const g of groups) {
+      const c = g._count._all;
+      orderCount += c;
+      counts[g.status] = c;
+      if (g.status === PurchaseOrderStatus.DELIVERED) {
+        grossRevenue = g._sum.summaryPrice ?? 0;
+      }
+    }
 
-    await this.orderDailyReportModel
-      .findOneAndUpdate(
-        { date: dateString },
-        {
-          $set: {
-            pendingCount: row?.pendingCount ?? 0,
-            confirmedCount: row?.confirmedCount ?? 0,
-            shippedCount: row?.shippedCount ?? 0,
-            deliveredCount: row?.deliveredCount ?? 0,
-            cancelledCount: row?.cancelledCount ?? 0,
-            orderCount,
-            grossRevenue,
-            averageOrderValue: orderCount ? grossRevenue / orderCount : 0,
-          },
-        },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
-      )
-      .exec();
+    await this.prisma.orderDailyReport.upsert({
+      where: { date: dateString },
+      update: {
+        pendingCount: counts[PurchaseOrderStatus.PENDING] ?? 0,
+        confirmedCount: counts[PurchaseOrderStatus.CONFIRMED] ?? 0,
+        shippedCount: counts[PurchaseOrderStatus.SHIPPED] ?? 0,
+        deliveredCount: counts[PurchaseOrderStatus.DELIVERED] ?? 0,
+        cancelledCount: counts[PurchaseOrderStatus.CANCELLED] ?? 0,
+        orderCount,
+        grossRevenue,
+        averageOrderValue: orderCount ? grossRevenue / orderCount : 0,
+      },
+      create: {
+        date: dateString,
+        pendingCount: counts[PurchaseOrderStatus.PENDING] ?? 0,
+        confirmedCount: counts[PurchaseOrderStatus.CONFIRMED] ?? 0,
+        shippedCount: counts[PurchaseOrderStatus.SHIPPED] ?? 0,
+        deliveredCount: counts[PurchaseOrderStatus.DELIVERED] ?? 0,
+        cancelledCount: counts[PurchaseOrderStatus.CANCELLED] ?? 0,
+        orderCount,
+        grossRevenue,
+        averageOrderValue: orderCount ? grossRevenue / orderCount : 0,
+      },
+    });
   }
 
   private async rebuildProductDailyReportForDate(
@@ -444,153 +266,136 @@ export class ReportingService {
     start: Date,
     end: Date,
   ) {
-    const rows = await this.purchaseOrderModel
-      .aggregate([
-        {
-          $match: {
-            createdAt: { $gte: start, $lte: end },
-            status: PurchaseOrderStatus.DELIVERED,
-          },
-        },
-        { $unwind: '$purchaseItems' },
-        {
-          $group: {
-            _id: '$purchaseItems.productId',
-            soldQty: { $sum: '$purchaseItems.count' },
-            revenue: {
-              $sum: {
-                $multiply: ['$purchaseItems.price', '$purchaseItems.count'],
-              },
-            },
-            orderCount: { $sum: 1 },
-          },
-        },
-      ])
-      .exec();
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        productId: string;
+        soldQty: number;
+        revenue: number;
+        orderCount: number;
+      }>
+    >(Prisma.sql`
+      SELECT pi."productId" AS "productId",
+        sum(pi.count)::int AS "soldQty",
+        coalesce(sum(pi.price * pi.count), 0)::float8 AS revenue,
+        count(*)::int AS "orderCount"
+      FROM purchase_items pi
+      JOIN purchase_orders po ON po.id = pi."orderId"
+      WHERE po.status::text = 'delivered'
+        AND po."createdAt" >= ${start}
+        AND po."createdAt" <= ${end}
+      GROUP BY pi."productId"
+    `);
 
-    await this.productDailyReportModel.deleteMany({ date: dateString }).exec();
-    if (!rows.length) {
-      return;
-    }
+    await this.prisma.productDailyReport.deleteMany({
+      where: { date: dateString },
+    });
+    if (!rows.length) return;
 
-    await this.productDailyReportModel.insertMany(
-      rows.map((row: any) => ({
+    await this.prisma.productDailyReport.createMany({
+      data: rows.map((row) => ({
         date: dateString,
-        productId: row._id,
+        productId: row.productId,
         soldQty: row.soldQty,
         revenue: row.revenue,
         orderCount: row.orderCount,
       })),
+    });
+  }
+
+  // ==== Helpers ====
+
+  /** Điều kiện lọc theo ngày cho câu SQL thô. */
+  private dateCond(fromDate?: Date, toDate?: Date, alias?: string): Prisma.Sql {
+    const col = alias
+      ? Prisma.sql`${Prisma.raw(`${alias}."createdAt"`)}`
+      : Prisma.sql`"createdAt"`;
+    const conds: Prisma.Sql[] = [];
+    if (fromDate) conds.push(Prisma.sql`${col} >= ${fromDate}`);
+    if (toDate) conds.push(Prisma.sql`${col} <= ${toDate}`);
+    if (!conds.length) return Prisma.empty;
+    return Prisma.sql` AND ${Prisma.join(conds, ' AND ')}`;
+  }
+
+  private async aggregateOverview(
+    fromDate?: Date,
+    toDate?: Date,
+  ): Promise<OverviewAgg> {
+    const groups = await this.prisma.purchaseOrder.groupBy({
+      by: ['status'],
+      where: this.orderWhere(fromDate, toDate),
+      _count: { _all: true },
+      _sum: { summaryPrice: true },
+    });
+
+    let pendingCount = 0;
+    let deliveredCount = 0;
+    let cancelledCount = 0;
+    let totalOrders = 0;
+    let totalRevenue = 0;
+
+    for (const g of groups) {
+      const c = g._count._all;
+      totalOrders += c;
+      if (g.status === PurchaseOrderStatus.PENDING) pendingCount = c;
+      if (g.status === PurchaseOrderStatus.CANCELLED) cancelledCount = c;
+      if (g.status === PurchaseOrderStatus.DELIVERED) {
+        deliveredCount = c;
+        totalRevenue = g._sum.summaryPrice ?? 0;
+      }
+    }
+
+    return {
+      pendingCount,
+      deliveredCount,
+      cancelledCount,
+      totalOrders,
+      totalRevenue,
+    };
+  }
+
+  private async countByStatus(fromDate?: Date, toDate?: Date) {
+    const groups = await this.prisma.purchaseOrder.groupBy({
+      by: ['status'],
+      where: this.orderWhere(fromDate, toDate),
+      _count: { _all: true },
+    });
+    return new Map<string, number>(
+      groups.map((g) => [g.status, g._count._all]),
     );
   }
 
-  private buildOrderMatch(fromDate?: Date, toDate?: Date) {
-    const match: Record<string, unknown> = {
-      status: { $ne: PurchaseOrderStatus.CART },
+  /** Bỏ đơn ở trạng thái giỏ hàng (cart) khỏi thống kê. */
+  private orderWhere(
+    fromDate?: Date,
+    toDate?: Date,
+  ): Prisma.PurchaseOrderWhereInput {
+    const where: Prisma.PurchaseOrderWhereInput = {
+      status: { not: PurchaseOrderStatus.CART as any },
     };
-
-    if (!fromDate && !toDate) {
-      return match;
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) (where.createdAt as Prisma.DateTimeFilter).gte = fromDate;
+      if (toDate) (where.createdAt as Prisma.DateTimeFilter).lte = toDate;
     }
-
-    const createdAt: Record<string, Date> = {};
-    if (fromDate) {
-      createdAt.$gte = fromDate;
-    }
-    if (toDate) {
-      createdAt.$lte = toDate;
-    }
-    match.createdAt = createdAt;
-    return match;
-  }
-
-  private async aggregateOverview(match: Record<string, any>) {
-    const [result] = await this.purchaseOrderModel
-      .aggregate([
-        { $match: match },
-        {
-          $group: {
-            _id: null,
-            pendingCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.PENDING] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            deliveredCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            cancelledCount: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.CANCELLED] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            totalOrders: { $sum: 1 },
-            totalRevenue: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$status', PurchaseOrderStatus.DELIVERED] },
-                  '$purchasePriceDetail.summaryPrice',
-                  0,
-                ],
-              },
-            },
-          },
-        },
-      ])
-      .exec();
-
-    return {
-      pendingCount: result?.pendingCount ?? 0,
-      deliveredCount: result?.deliveredCount ?? 0,
-      cancelledCount: result?.cancelledCount ?? 0,
-      totalOrders: result?.totalOrders ?? 0,
-      totalRevenue: result?.totalRevenue ?? 0,
-    };
+    return where;
   }
 
   private buildPreviousPeriod(fromDate?: Date, toDate?: Date) {
-    if (!fromDate || !toDate) {
-      return null;
-    }
-
+    if (!fromDate || !toDate) return null;
     const durationMs = Math.max(toDate.getTime() - fromDate.getTime(), 0);
     const prevTo = new Date(fromDate.getTime() - 1);
     const prevFrom = new Date(prevTo.getTime() - durationMs);
-
-    return {
-      fromDate: prevFrom,
-      toDate: prevTo,
-    };
+    return { fromDate: prevFrom, toDate: prevTo };
   }
 
   private calcGrowthPct(current: number, previous: number | null) {
-    if (previous === null) {
-      return null;
-    }
-    if (previous === 0) {
-      return current > 0 ? 100 : 0;
-    }
+    if (previous === null) return null;
+    if (previous === 0) return current > 0 ? 100 : 0;
     return ((current - previous) / previous) * 100;
   }
 
   private calcRate(numerator: number, denominator: number) {
-    if (!denominator) {
-      return 0;
-    }
+    if (!denominator) return 0;
     return (numerator / denominator) * 100;
   }
 

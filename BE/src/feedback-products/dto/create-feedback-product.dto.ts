@@ -3,7 +3,7 @@ import {
   IsArray,
   IsString,
   IsOptional,
-  IsMongoId,
+  IsUUID,
   IsInt,
   Min,
   Max,
@@ -17,7 +17,7 @@ export class CreateFeedbackProductDto {
   @MaxLength(1000)
   comment?: string;
 
-  @IsMongoId()
+  @IsUUID()
   purchaseOrderId: string;
 
   @IsInt()

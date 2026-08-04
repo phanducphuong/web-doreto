@@ -1,15 +1,15 @@
-import { IsMongoId, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsInt } from 'class-validator';
 
 export class CreateCategoryDto {
   @IsString()
   name: string;
 
   @IsOptional()
-  @IsNumber()
-  parentId?: number;
+  @IsUUID()
+  parentId?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   order?: number;
 
   @IsOptional()

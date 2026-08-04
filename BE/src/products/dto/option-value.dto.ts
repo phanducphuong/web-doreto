@@ -4,11 +4,11 @@ import {
   IsNumber,
   IsArray,
   Min,
-  IsMongoId,
+  IsUUID,
 } from 'class-validator';
 
 export class OptionValueDto {
-  @IsMongoId()
+  @IsUUID()
   @IsOptional()
   _id?: string;
 

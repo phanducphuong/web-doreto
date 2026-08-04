@@ -1,17 +1,18 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { MongooseModule } from '@nestjs/mongoose';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from './prisma/prisma.module';
+import { IdSerializeInterceptor } from './common/interceptors/id-serialize.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
-import { CounterModule } from './counter/counter.module';
 import { FeedbackProductsModule } from './feedback-products/feedback-products.module';
 import { ContactRequestsModule } from './contact-requests/contact-requests.module';
 import { TagsModule } from './tags/tags.module';
@@ -25,19 +26,10 @@ import { ReportingModule } from './reporting/reporting.module';
     }),
     ConfigModule.forRoot({
       isGlobal: true,
+      // .env.local (bí mật local, không lên git) được nạp trước .env
+      envFilePath: ['.env.local', '.env'],
     }),
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const uri = configService.get<string>('MONGO_URI');
-        console.log('MONGO_URI =', uri ? `${uri.substring(0, 20)}...` : 'UNDEFINED');
-        return {
-          uri,
-          serverSelectionTimeoutMS: 10000,
-        };
-      },
-    }),
-    CounterModule,
+    PrismaModule,
     AuthModule,
     UsersModule,
     CategoriesModule,
@@ -49,7 +41,10 @@ import { ReportingModule } from './reporting/reporting.module';
     TagsModule,
     ReportingModule,
   ],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_INTERCEPTOR, useClass: IdSerializeInterceptor },
+  ],
   controllers: [AppController],
 })
 export class AppModule {}

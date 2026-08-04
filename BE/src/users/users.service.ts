@@ -5,36 +5,56 @@ import {
   UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, QueryFilter } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import { Prisma } from '@prisma/client';
 
-import { Address, User, UserDocument } from './schemas/user.schema';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { BaseService } from 'src/common/base/base.service';
 import { AddressDto } from './dto/address.dto';
 import { AdminQueryUsersDto } from './dto/admin-query-users.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import { ChangeEmailDto } from './dto/change-email.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
+const USER_INCLUDE = {
+  addresses: { orderBy: { createdAt: 'asc' as const } },
+};
+
 @Injectable()
-export class UsersService extends BaseService<UserDocument> {
-  constructor(
-    @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
-  ) {
-    super(userModel);
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private omitPassword<T extends { password?: string }>(user: T) {
+    if (!user) return user;
+    const { password: _pw, ...rest } = user;
+    return rest;
+  }
+
+  /** Tạo user mới (hash password vì không còn hook Mongoose). */
+  async create(data: {
+    email: string;
+    name: string;
+    password: string;
+    phoneNumber?: string;
+    role?: string;
+    avatarUrl?: string;
+  }) {
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(data.password, salt);
+    return this.prisma.user.create({
+      data: { ...data, password: hashed } as Prisma.UserCreateInput,
+    });
   }
 
   async findOne(id: string) {
-    const user = await this.userModel.findById(id).select('-password').exec();
-
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: USER_INCLUDE,
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-
-    return user;
+    return this.omitPassword(user);
   }
 
   async updateProfile(userId: string, updateProfileDto: UpdateUserDto) {
@@ -49,40 +69,35 @@ export class UsersService extends BaseService<UserDocument> {
       page = 1,
       limit = 10,
     } = queryDto;
-    const filter: QueryFilter<UserDocument> = {};
 
+    const where: Prisma.UserWhereInput = {};
     if (keyword?.trim()) {
-      const normalizedKeyword = keyword.trim();
-      filter.$or = [
-        { name: { $regex: normalizedKeyword, $options: 'i' } },
-        { email: { $regex: normalizedKeyword, $options: 'i' } },
-        { phoneNumber: { $regex: normalizedKeyword, $options: 'i' } },
-      ] as any;
+      const kw = keyword.trim();
+      where.OR = [
+        { name: { contains: kw, mode: 'insensitive' } },
+        { email: { contains: kw, mode: 'insensitive' } },
+        { phoneNumber: { contains: kw, mode: 'insensitive' } },
+      ];
     }
 
     const skip = (page - 1) * limit;
     const [total, data] = await Promise.all([
-      this.userModel.countDocuments(filter).exec(),
-      this.userModel
-        .find(filter)
-        .select('-password')
-        .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .exec(),
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        include: USER_INCLUDE,
+        omit: { password: true },
+        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
+        skip,
+        take: limit,
+      }),
     ]);
 
-    return {
-      data,
-      total,
-      page,
-      count: limit,
-    };
+    return { data, total, page, count: limit };
   }
 
   async changeEmail(userId: string, dto: ChangeEmailDto) {
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -98,14 +113,16 @@ export class UsersService extends BaseService<UserDocument> {
     }
 
     await this.checkDuplicateFields({ email: normalizedNewEmail }, userId);
-    user.email = normalizedNewEmail;
-    await user.save();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { email: normalizedNewEmail },
+    });
 
     return this.findOne(userId);
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto) {
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -120,35 +137,49 @@ export class UsersService extends BaseService<UserDocument> {
       throw new BadRequestException('New password must be different');
     }
 
-    user.password = dto.newPassword;
-    await user.save();
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(dto.newPassword, salt);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
 
     return { message: 'Password updated successfully' };
   }
 
+  // ==== Địa chỉ (bảng riêng, thay mảng nhúng cũ) ====
+
   async addAddress(userId: string, addressDto: AddressDto) {
-    const user = await this.userModel.findById(userId).exec();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const currentAddresses = (user.addresses ?? []) as unknown as Address[];
-    const shouldSetDefault =
-      Boolean(addressDto.isDefault) || currentAddresses.length === 0;
-    const nextAddresses = shouldSetDefault
-      ? currentAddresses.map((address: any) => ({
-          ...address.toObject(),
-          isDefault: false,
-        }))
-      : currentAddresses.map((address: any) => address.toObject());
+    const count = await this.prisma.address.count({ where: { userId } });
+    const shouldSetDefault = Boolean(addressDto.isDefault) || count === 0;
 
-    nextAddresses.push({
-      ...(addressDto as Address),
-      country: addressDto.country || 'Việt Nam',
-      isDefault: shouldSetDefault,
+    await this.prisma.$transaction(async (tx) => {
+      if (shouldSetDefault) {
+        await tx.address.updateMany({
+          where: { userId },
+          data: { isDefault: false },
+        });
+      }
+      await tx.address.create({
+        data: {
+          userId,
+          addressName: addressDto.addressName,
+          phoneNumber: addressDto.phoneNumber,
+          name: addressDto.name,
+          detailedAddress: addressDto.detailedAddress,
+          ward: addressDto.ward,
+          district: addressDto.district,
+          city: addressDto.city,
+          country: addressDto.country || 'Việt Nam',
+          isDefault: shouldSetDefault,
+        },
+      });
     });
-    user.addresses = nextAddresses as unknown as Address[];
-    await user.save();
 
     return this.findOne(userId);
   }
@@ -158,90 +189,73 @@ export class UsersService extends BaseService<UserDocument> {
     addressId: string,
     addressDto: AddressDto,
   ) {
-    const user = await this.userModel.findById(userId).exec();
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    const addressIndex = (user.addresses ?? []).findIndex(
-      (address) => String((address as any)._id) === addressId,
-    );
-    if (addressIndex === -1) {
+    const address = await this.prisma.address.findFirst({
+      where: { id: addressId, userId },
+    });
+    if (!address) {
       throw new NotFoundException('Address not found');
     }
 
-    const existingAddress = user.addresses[addressIndex] as any;
     const shouldSetDefault = Boolean(addressDto.isDefault);
-    const addresses = (user.addresses ?? []).map(
-      (address: any, index: number) => {
-        if (index !== addressIndex) {
-          return {
-            ...address.toObject(),
-            isDefault: shouldSetDefault ? false : address.isDefault,
-          };
-        }
 
-        return {
-          ...existingAddress.toObject(),
-          ...addressDto,
-          country: addressDto.country || existingAddress.country || 'Việt Nam',
-          isDefault: shouldSetDefault ? true : existingAddress.isDefault,
-        };
-      },
-    );
+    await this.prisma.$transaction(async (tx) => {
+      if (shouldSetDefault) {
+        await tx.address.updateMany({
+          where: { userId, id: { not: addressId } },
+          data: { isDefault: false },
+        });
+      }
+      await tx.address.update({
+        where: { id: addressId },
+        data: {
+          addressName: addressDto.addressName,
+          phoneNumber: addressDto.phoneNumber,
+          name: addressDto.name,
+          detailedAddress: addressDto.detailedAddress,
+          ward: addressDto.ward,
+          district: addressDto.district,
+          city: addressDto.city,
+          country: addressDto.country || address.country || 'Việt Nam',
+          isDefault: shouldSetDefault ? true : address.isDefault,
+        },
+      });
+    });
 
-    user.addresses = this.ensureOneDefaultAddress(
-      addresses as Address[],
-    ) as any;
-
-    await user.save();
+    await this.ensureOneDefaultAddress(userId);
     return this.findOne(userId);
   }
 
   async setDefaultAddress(userId: string, addressId: string) {
-    const user = await this.userModel.findById(userId).exec();
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    let matched = false;
-    user.addresses = (user.addresses ?? []).map((address: any) => {
-      const isTarget = String(address._id) === addressId;
-      if (isTarget) {
-        matched = true;
-      }
-      return {
-        ...address.toObject(),
-        isDefault: isTarget,
-      };
-    }) as any;
-
-    if (!matched) {
+    const address = await this.prisma.address.findFirst({
+      where: { id: addressId, userId },
+    });
+    if (!address) {
       throw new NotFoundException('Address not found');
     }
 
-    await user.save();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.address.updateMany({
+        where: { userId },
+        data: { isDefault: false },
+      });
+      await tx.address.update({
+        where: { id: addressId },
+        data: { isDefault: true },
+      });
+    });
+
     return this.findOne(userId);
   }
 
   async removeAddress(userId: string, addressId: string) {
-    const user = await this.userModel.findById(userId).exec();
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    const beforeLength = (user.addresses ?? []).length;
-    user.addresses = (user.addresses ?? []).filter(
-      (address) => String((address as any)._id) !== addressId,
-    );
-
-    if (user.addresses.length === beforeLength) {
+    const res = await this.prisma.address.deleteMany({
+      where: { id: addressId, userId },
+    });
+    if (res.count === 0) {
       throw new NotFoundException('Address not found');
     }
 
-    user.addresses = this.ensureOneDefaultAddress(user.addresses as any) as any;
-
-    await user.save();
+    await this.ensureOneDefaultAddress(userId);
     return this.findOne(userId);
   }
 
@@ -249,90 +263,79 @@ export class UsersService extends BaseService<UserDocument> {
     return this.update(id, updateDto as UpdateUserDto);
   }
 
-  async update<TUserUpdateResponse>(id: string, updateUserDto: UpdateUserDto) {
-    // Check for duplicates before updating
+  async update(id: string, updateUserDto: UpdateUserDto) {
     await this.checkDuplicateFields(updateUserDto, id);
 
-    const user = await this.userModel
-      .findByIdAndUpdate(id, updateUserDto, {
-        new: true,
-      })
-      .select('-password')
-      .lean()
-      .exec();
+    // Bỏ `addresses` khỏi payload — địa chỉ được quản lý qua các endpoint riêng.
+    const { addresses: _addresses, ...rest } = updateUserDto;
 
-    if (!user) {
+    try {
+      const user = await this.prisma.user.update({
+        where: { id },
+        data: rest as Prisma.UserUpdateInput,
+        include: USER_INCLUDE,
+        omit: { password: true },
+      });
+      return user;
+    } catch {
       throw new NotFoundException('User not found');
     }
-
-    return user as TUserUpdateResponse;
   }
 
   async findByEmail(email: string) {
-    return this.userModel.findOne({ email }).select('+password').exec();
+    return this.prisma.user.findUnique({ where: { email } });
   }
 
   async findByPhoneNumber(phoneNumber: string) {
-    return this.userModel.findOne({ phoneNumber }).select('+password').exec();
+    return this.prisma.user.findUnique({ where: { phoneNumber } });
   }
 
   async updateRefreshToken(userId: string, refreshToken: string | null) {
-    return this.userModel.findByIdAndUpdate(
-      userId,
-      { refreshToken },
-      { returnDocument: 'after' },
-    );
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshToken },
+    });
   }
 
-  /**
-   * Check for duplicate email and phone number
-   * @param fields - Object containing email and/or phoneNumber
-   * @param excludeId - User ID to exclude from check (for updates)
-   */
   async checkDuplicateFields(
     fields: { email?: string; phoneNumber?: string },
     excludeId?: string,
   ) {
     const { email, phoneNumber } = fields;
 
-    // Check duplicate email
     if (email) {
-      const existingUser = await this.userModel.findOne({
-        email,
-        ...(excludeId && { _id: { $ne: excludeId } }),
+      const existing = await this.prisma.user.findFirst({
+        where: { email, ...(excludeId ? { id: { not: excludeId } } : {}) },
       });
-
-      if (existingUser) {
+      if (existing) {
         throw new ConflictException('Email already exists');
       }
     }
 
-    // Check duplicate phone number
     if (phoneNumber) {
-      const existingUser = await this.userModel.findOne({
-        phoneNumber,
-        ...(excludeId && { _id: { $ne: excludeId } }),
+      const existing = await this.prisma.user.findFirst({
+        where: {
+          phoneNumber,
+          ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
       });
-
-      if (existingUser) {
+      if (existing) {
         throw new ConflictException('Phone number already exists');
       }
     }
   }
 
-  private ensureOneDefaultAddress(addresses: Address[]) {
-    if (!addresses?.length) {
-      return [];
-    }
-
-    const hasDefault = addresses.some((address: any) =>
-      Boolean(address.isDefault),
-    );
-    if (hasDefault) {
-      return addresses;
-    }
-
-    const [first, ...rest] = addresses;
-    return [{ ...(first as any), isDefault: true }, ...rest];
+  /** Đảm bảo luôn có đúng 1 địa chỉ mặc định (nếu còn địa chỉ). */
+  private async ensureOneDefaultAddress(userId: string) {
+    const addresses = await this.prisma.address.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!addresses.length) return;
+    if (addresses.some((a) => a.isDefault)) return;
+    await this.prisma.address.update({
+      where: { id: addresses[0].id },
+      data: { isDefault: true },
+    });
   }
 }

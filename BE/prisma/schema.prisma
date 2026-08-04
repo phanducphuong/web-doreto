@@ -1,0 +1,312 @@
+// Prisma schema cho Doreto (PostgreSQL)
+// Khóa chính: UUID cho mọi bảng. API vẫn trả trường `_id` (map từ `id`) qua interceptor.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==== Enums ====
+enum Role {
+  admin
+  customer
+}
+
+enum PurchaseOrderStatus {
+  cart
+  pending
+  confirmed
+  shipped
+  delivered
+  cancelled
+}
+
+enum ContactSpamKind {
+  email
+  phone
+}
+
+// ==== Người dùng ====
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  password     String
+  refreshToken String?
+  role         Role      @default(customer)
+  phoneNumber  String?   @unique
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  addresses      Address[]
+  purchaseOrders PurchaseOrder[]
+  feedbacks      FeedbackProduct[] @relation("FeedbackAuthor")
+  repliedFeedbacks FeedbackProduct[] @relation("FeedbackReplier")
+
+  @@map("users")
+}
+
+// Tách từ User.addresses[] (mảng nhúng) thành bảng riêng
+model Address {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  addressName     String?
+  phoneNumber     String
+  name            String
+  detailedAddress String
+  ward            String
+  district        String
+  city            String
+  country         String?  @default("Việt Nam")
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ==== Danh mục (cây cha-con) ====
+model Category {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String
+  parentId    String?  @db.Uuid
+  order       Int?     @default(0)
+  icon        String?
+  description String?  @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products ProductCategory[]
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+// ==== Nhãn ====
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  icon      String?
+  order     Int?     @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products ProductTag[]
+
+  @@map("tags")
+}
+
+// ==== Sản phẩm ====
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  normalizedName String   @default("")
+  minPrice       Float    @default(0)
+  maxPrice       Float    @default(0)
+  purchaseCount  Int      @default(0)
+  averageRating  Float    @default(0)
+  ratingCount    Int      @default(0)
+  isActive       Boolean  @default(true)
+  stock          Int      @default(0)
+  productOptions String[] @default([])
+  imageUrls      String[] @default([])
+  thumbnailUrls  String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  optionValues OptionValue[]
+  categories   ProductCategory[]
+  tags         ProductTag[]
+  purchaseItems PurchaseItem[]
+
+  @@index([normalizedName])
+  @@map("products")
+}
+
+// Biến thể sản phẩm (thay Product.optionValueIds nhúng bằng quan hệ 1-N)
+model OptionValue {
+  id                 String   @id @default(uuid()) @db.Uuid
+  productId          String?  @db.Uuid
+  imageUrl           String?
+  price              Float
+  originalPrice      Float?
+  purchaseCount      Int?     @default(0)
+  stock              Int?     @default(0)
+  productOptionNames String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  product       Product?       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseItems PurchaseItem[]
+
+  @@index([productId])
+  @@map("option_values")
+}
+
+// Bảng nối N-N Product <-> Category
+model ProductCategory {
+  productId  String   @db.Uuid
+  categoryId String   @db.Uuid
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@map("product_categories")
+}
+
+// Bảng nối N-N Product <-> Tag
+model ProductTag {
+  productId String @db.Uuid
+  tagId     String @db.Uuid
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@index([tagId])
+  @@map("product_tags")
+}
+
+// ==== Đơn hàng ====
+model PurchaseOrder {
+  id                String              @id @default(uuid()) @db.Uuid
+  userId            String?             @db.Uuid
+  status            PurchaseOrderStatus @default(pending)
+  summaryPrice      Float               @default(0)
+  nonLoginUserEmail String?
+  address           Json? // snapshot địa chỉ giao (JSONB)
+  deliveriedAt      DateTime?
+  isFeedbacked      Boolean             @default(false)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  purchaseItems PurchaseItem[]
+  feedbacks     FeedbackProduct[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("purchase_orders")
+}
+
+// Dòng chi tiết đơn (tách từ mảng nhúng PurchaseOrder.purchaseItems)
+model PurchaseItem {
+  id                  String @id @default(uuid()) @db.Uuid
+  orderId             String @db.Uuid
+  productId           String @db.Uuid
+  productOptionValueId String @db.Uuid
+  count               Int
+  price               Float
+  product             Json? // snapshot sản phẩm tại thời điểm mua (JSONB)
+  productOptionValue  Json? // snapshot biến thể (JSONB)
+
+  order       PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productRef  Product       @relation(fields: [productId], references: [id])
+  optionValue OptionValue   @relation(fields: [productOptionValueId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+// ==== Đánh giá sản phẩm ====
+model FeedbackProduct {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  purchaseOrderId String    @db.Uuid
+  comment         String?
+  images          String[]  @default([])
+  score           Int?
+  adminReply      String?
+  replyImages     String[]  @default([])
+  repliedBy       String?   @db.Uuid
+  repliedAt       DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user     User          @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  order    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  replier  User?         @relation("FeedbackReplier", fields: [repliedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, purchaseOrderId])
+  @@index([purchaseOrderId, isActive, createdAt])
+  @@map("feedback_products")
+}
+
+// ==== Liên hệ ====
+model ContactRequest {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  phone     String?
+  email     String?
+  done      Boolean   @default(false)
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("contact_requests")
+}
+
+model ContactSpamBlock {
+  id        String          @id @default(uuid()) @db.Uuid
+  kind      ContactSpamKind
+  value     String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([kind, value])
+  @@map("contact_spam_blocks")
+}
+
+// ==== Báo cáo tổng hợp theo ngày ====
+model OrderDailyReport {
+  id                String   @id @default(uuid()) @db.Uuid
+  date              String   @unique
+  pendingCount      Int      @default(0)
+  confirmedCount    Int      @default(0)
+  shippedCount      Int      @default(0)
+  deliveredCount    Int      @default(0)
+  cancelledCount    Int      @default(0)
+  orderCount        Int      @default(0)
+  grossRevenue      Float    @default(0)
+  averageOrderValue Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("order_daily_reports")
+}
+
+model ProductDailyReport {
+  id         String   @id @default(uuid()) @db.Uuid
+  date       String
+  productId  String   @db.Uuid
+  soldQty    Int      @default(0)
+  revenue    Float    @default(0)
+  orderCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([date, productId])
+  @@index([date])
+  @@index([productId])
+  @@map("product_daily_reports")
+}

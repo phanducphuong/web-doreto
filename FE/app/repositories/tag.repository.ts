@@ -6,7 +6,7 @@ const createTagRepository = ($api: typeof $fetch) => ({
       method: "GET",
     }),
 
-  getTagById: (id: number) =>
+  getTagById: (id: string) =>
     $api<TExistedTag>(`/tags/${id}`, {
       method: "GET",
     }),
@@ -17,13 +17,13 @@ const createTagRepository = ($api: typeof $fetch) => ({
       body: payload,
     }),
 
-  updateTag: (id: number, payload: TUpdateTagPayload) =>
+  updateTag: (id: string, payload: TUpdateTagPayload) =>
     $api<TExistedTag>(`/tags/${id}`, {
       method: "PATCH",
       body: payload,
     }),
 
-  deleteTag: (id: number) =>
+  deleteTag: (id: string) =>
     $api<void>(`/tags/${id}`, {
       method: "DELETE",
     }),

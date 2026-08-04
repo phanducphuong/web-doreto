@@ -65,7 +65,7 @@
           :icon="Trash"
           :is-loading="loadingStates.delete"
           @click="
-            deleteCategory(Number(category._id)).then(() => emits('on-delete-category-success'))
+            deleteCategory(category._id).then(() => emits('on-delete-category-success'))
           "
         >
           Xóa

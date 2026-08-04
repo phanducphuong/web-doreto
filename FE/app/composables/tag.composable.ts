@@ -81,7 +81,7 @@ export default function useTag() {
     }
   };
 
-  const getTagById = async (id: number) => {
+  const getTagById = async (id: string) => {
     try {
       loadingStates.value.getById = true;
       operationError.value = "";
@@ -113,7 +113,7 @@ export default function useTag() {
     }
   };
 
-  const updateTag = async (id: number, payload: TUpdateTagPayload) => {
+  const updateTag = async (id: string, payload: TUpdateTagPayload) => {
     try {
       loadingStates.value.upsert = true;
       operationError.value = "";
@@ -130,7 +130,7 @@ export default function useTag() {
     }
   };
 
-  const deleteTag = async (id: number) => {
+  const deleteTag = async (id: string) => {
     try {
       loadingStates.value.delete = true;
       operationError.value = "";

@@ -57,7 +57,7 @@ const route = useRoute();
 
 if (route.name === "danh-muc") {
   const { id } = route.params;
-  if (!isNaN(Number(id))) productQuery.value.categoryId = Number(id);
+  if (id) productQuery.value.categoryId = String(id);
 } else {
   productQuery.value.categoryId = undefined;
 }
@@ -69,7 +69,7 @@ const total = computed(() => products.value?.total || 0);
 const hasMore = computed(() => listProducts.value.length < total.value);
 const headLabel = computed(() => {
   if (route.name === "danh-muc") {
-    const category = categories.value.find((cat) => cat._id === Number(route.params.id));
+    const category = categories.value.find((cat) => cat._id === route.params.id);
     return category?.name;
   }
   return "Tất cả sản phẩm";

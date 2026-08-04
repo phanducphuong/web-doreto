@@ -3,45 +3,53 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, QueryFilter, UpdateQuery } from 'mongoose';
-import {
-  PurchaseOrder,
-  PurchaseOrderDocument,
-} from './schemas/purchase-order.schema';
+import { Prisma, PurchaseOrderStatus as PrismaStatus } from '@prisma/client';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
-import { BaseService } from 'src/common/base/base.service';
 import { Role } from 'src/common/enums/role.enum';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
-import { ProductOptionValueService } from 'src/products/option-value.service';
-import {
-  OptionValue,
-  OptionValueDocument,
-} from 'src/products/schemas/option-value.schema';
-import { Product, ProductDocument } from 'src/products/schemas/product.schema';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { ReportingService } from 'src/reporting/reporting.service';
 import { PurchaseItemDto } from './dto/purchase-item.dto';
 
-type SnapshotPurchaseItem = {
-  productId: number;
+type SnapshotItem = {
+  productId: string;
   productOptionValueId: string;
   count: number;
 };
 
+type BuiltItem = SnapshotItem & {
+  price: number;
+  product: Prisma.InputJsonValue;
+  productOptionValue: Prisma.InputJsonValue;
+};
+
+const ORDER_INCLUDE = {
+  purchaseItems: true,
+  user: { omit: { password: true, refreshToken: true } },
+};
+
 @Injectable()
-export class PurchaseOrdersService extends BaseService<PurchaseOrderDocument> {
+export class PurchaseOrdersService {
   constructor(
-    @InjectModel(PurchaseOrder.name)
-    private readonly purchaseOrderModel: Model<PurchaseOrderDocument>,
-    @InjectModel(Product.name)
-    private readonly productModel: Model<ProductDocument>,
-    @InjectModel(OptionValue.name)
-    private readonly optionValueModel: Model<OptionValueDocument>,
-    private readonly optionValueService: ProductOptionValueService,
+    private readonly prisma: PrismaService,
     private readonly reportingService: ReportingService,
-  ) {
-    super(purchaseOrderModel);
+  ) {}
+
+  /** Bổ sung purchasePriceDetail và nonLoginUser để giữ đúng shape API cũ. */
+  private shape(order: any) {
+    if (!order) return order;
+    return {
+      ...order,
+      purchasePriceDetail: { summaryPrice: order.summaryPrice },
+      nonLoginUser: order.nonLoginUserEmail
+        ? { email: order.nonLoginUserEmail }
+        : undefined,
+    };
+  }
+
+  private toJson(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   }
 
   async createPurchaseOrder(
@@ -59,114 +67,150 @@ export class PurchaseOrdersService extends BaseService<PurchaseOrderDocument> {
       );
     }
 
-    const validatedPurchaseItems = await this.buildPurchaseItemSnapshots(
+    const items = await this.buildPurchaseItemSnapshots(
       createPurchaseOrderDto.purchaseItems,
     );
-    const purchasePriceDetail = this.buildPurchasePriceDetail(
-      validatedPurchaseItems,
-    );
+    const summaryPrice = this.calcSummaryPrice(items);
 
-    const purchaseOrder = new this.purchaseOrderModel({
-      ...createPurchaseOrderDto,
-      purchaseItems: validatedPurchaseItems,
-      purchasePriceDetail,
+    const order = await this.prisma.purchaseOrder.create({
+      data: {
+        userId: createPurchaseOrderDto.userId || null,
+        status: (createPurchaseOrderDto.status ??
+          PurchaseOrderStatus.PENDING) as PrismaStatus,
+        summaryPrice,
+        nonLoginUserEmail: createPurchaseOrderDto.nonLoginUser?.email,
+        address: createPurchaseOrderDto.address
+          ? this.toJson(createPurchaseOrderDto.address)
+          : undefined,
+        purchaseItems: { create: items.map((i) => this.itemCreateData(i)) },
+      },
+      include: ORDER_INCLUDE,
     });
-    const createdOrder = await purchaseOrder.save();
-    await this.reportingService.syncByOrderDate(
-      (createdOrder as any).createdAt,
-    );
-    return createdOrder;
+
+    await this.reportingService.syncByOrderDate(order.createdAt);
+    return this.shape(order);
   }
 
   async findOne(id: string) {
-    const purchaseOrder = await this.purchaseOrderModel.findById(id).exec();
-    if (!purchaseOrder) {
+    const order = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: ORDER_INCLUDE,
+    });
+    if (!order) {
       throw new NotFoundException('Purchase order not found');
     }
-    return purchaseOrder;
+    return this.shape(order);
   }
-
-  //   async update(id: string, updatePurchaseOrderDto: UpdatePurchaseOrderDto) {
-  //     super.update(id, updatePurchaseOrderDto);
-  //     // const purchaseOrder = await this.purchaseOrderModel
-  //     //   .findByIdAndUpdate(id, updatePurchaseOrderDto, { new: true })
-  //     //   .exec();
-  //     // if (!purchaseOrder) {
-  //     //   throw new NotFoundException('Purchase order not found');
-  //     // }
-  //     // return purchaseOrder;
-  //   }
 
   async updatePurchaseOrder(id: string, dto: UpdatePurchaseOrderDto) {
     const updatedOrder = await this.upsertPurchaseOrder(id, dto);
-    await this.reportingService.syncByOrderDate(
-      (updatedOrder as any).createdAt,
-    );
-    return updatedOrder;
+    await this.reportingService.syncByOrderDate(updatedOrder.createdAt);
+    return this.shape(updatedOrder);
   }
 
-  async upsertPurchaseOrder(id: string, dto: UpdatePurchaseOrderDto) {
-    const existingOrder = await this.purchaseOrderModel
-      .findById(id)
-      .lean()
-      .exec();
-    const payload: UpdatePurchaseOrderDto & {
-      purchasePriceDetail?: { summaryPrice: number };
-      deliveriedAt?: Date;
-    } = { ...dto };
-    this.applyDeliveredAtOnStatusTransition(
-      this.toPurchaseOrderStatus(existingOrder?.status),
-      this.toPurchaseOrderStatus(payload.status ?? existingOrder?.status),
-      payload,
-    );
-    if (payload.purchaseItems) {
-      payload.purchaseItems = await this.buildPurchaseItemSnapshots(
-        payload.purchaseItems,
-      );
-      payload.purchasePriceDetail = this.buildPurchasePriceDetail(
-        payload.purchaseItems,
-      );
+  private async upsertPurchaseOrder(id: string, dto: UpdatePurchaseOrderDto) {
+    const existing = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: { purchaseItems: true },
+    });
+
+    const prevStatus = this.toStatus(existing?.status);
+    const nextStatus = this.toStatus(dto.status ?? existing?.status);
+
+    const data: Prisma.PurchaseOrderUpdateInput = {};
+    if (dto.status !== undefined) data.status = dto.status as PrismaStatus;
+    if (dto.address !== undefined) {
+      data.address = dto.address ? this.toJson(dto.address) : Prisma.JsonNull;
+    }
+    if (dto.nonLoginUser !== undefined) {
+      data.nonLoginUserEmail = dto.nonLoginUser?.email;
+    }
+    if (prevStatus !== PurchaseOrderStatus.DELIVERED &&
+        nextStatus === PurchaseOrderStatus.DELIVERED) {
+      data.deliveriedAt = new Date();
     }
 
-    const upsertedOrder = await super.upsert({ _id: id }, {
-      $set: payload,
-    } as UpdateQuery<PurchaseOrderDocument>);
-    await this.handleInventoryOnStatusTransition(
-      this.toPurchaseOrderStatus(existingOrder?.status),
-      this.toPurchaseOrderStatus(upsertedOrder.status ?? payload.status),
-      this.toSnapshotPurchaseItems(existingOrder?.purchaseItems),
-      this.toSnapshotPurchaseItems(
-        payload.purchaseItems ?? upsertedOrder.purchaseItems,
-      ),
-    );
+    let builtItems: BuiltItem[] | undefined;
+    if (dto.purchaseItems) {
+      builtItems = await this.buildPurchaseItemSnapshots(dto.purchaseItems);
+      data.summaryPrice = this.calcSummaryPrice(builtItems);
+    }
 
-    return upsertedOrder;
+    const prevItems = this.toSnapshotItems(existing?.purchaseItems);
+    const nextItems = builtItems
+      ? builtItems.map((i) => ({
+          productId: i.productId,
+          productOptionValueId: i.productOptionValueId,
+          count: i.count,
+        }))
+      : prevItems;
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      let saved;
+      if (existing) {
+        if (builtItems) {
+          await tx.purchaseItem.deleteMany({ where: { orderId: id } });
+        }
+        saved = await tx.purchaseOrder.update({
+          where: { id },
+          data: {
+            ...data,
+            ...(builtItems
+              ? {
+                  purchaseItems: {
+                    create: builtItems.map((i) => this.itemCreateData(i)),
+                  },
+                }
+              : {}),
+          },
+          include: ORDER_INCLUDE,
+        });
+      } else {
+        saved = await tx.purchaseOrder.create({
+          data: {
+            id,
+            status: (dto.status ?? PurchaseOrderStatus.CART) as PrismaStatus,
+            summaryPrice: builtItems ? this.calcSummaryPrice(builtItems) : 0,
+            nonLoginUserEmail: dto.nonLoginUser?.email,
+            address: dto.address ? this.toJson(dto.address) : undefined,
+            ...(builtItems
+              ? {
+                  purchaseItems: {
+                    create: builtItems.map((i) => this.itemCreateData(i)),
+                  },
+                }
+              : {}),
+          },
+          include: ORDER_INCLUDE,
+        });
+      }
+
+      await this.handleInventoryOnStatusTransition(
+        tx,
+        prevStatus,
+        nextStatus,
+        prevItems,
+        nextItems,
+      );
+
+      return saved;
+    });
+
+    return order;
   }
 
   async remove(id: string) {
-    const purchaseOrder = await this.purchaseOrderModel
-      .findByIdAndDelete(id)
-      .exec();
-    if (!purchaseOrder) {
-      throw new NotFoundException('Purchase order not found');
-    }
-    await this.reportingService.syncByOrderDate(
-      (purchaseOrder as any).createdAt,
-    );
-    return purchaseOrder;
+    const order = await this.prisma.purchaseOrder
+      .delete({ where: { id }, include: ORDER_INCLUDE })
+      .catch(() => {
+        throw new NotFoundException('Purchase order not found');
+      });
+    await this.reportingService.syncByOrderDate(order.createdAt);
+    return this.shape(order);
   }
 
   async findAllByUserId(userId: string, page: number = 1, limit: number = 10) {
-    return this.query(
-      { userId }, // filter
-      {
-        page,
-        limit,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      },
-      ['user'],
-    );
+    return this.paginate({ userId }, page, limit);
   }
 
   async findAllPaginated(
@@ -177,106 +221,120 @@ export class PurchaseOrdersService extends BaseService<PurchaseOrderDocument> {
     fromDate?: Date,
     toDate?: Date,
   ) {
-    const filter: QueryFilter<PurchaseOrderDocument> = {
-      status: { $ne: PurchaseOrderStatus.CART },
+    const where: Prisma.PurchaseOrderWhereInput = {
+      status: status
+        ? (status as PrismaStatus)
+        : { not: PurchaseOrderStatus.CART as PrismaStatus },
     };
-    if (userId) {
-      filter.userId = userId;
-    }
-    if (status) {
-      filter.status = status;
-    }
+    if (userId) where.userId = userId;
     if (fromDate || toDate) {
-      filter.createdAt = {};
-      if (fromDate) {
-        filter.createdAt.$gte = fromDate;
-      }
-      if (toDate) {
-        filter.createdAt.$lte = toDate;
-      }
+      where.createdAt = {};
+      if (fromDate) (where.createdAt as Prisma.DateTimeFilter).gte = fromDate;
+      if (toDate) (where.createdAt as Prisma.DateTimeFilter).lte = toDate;
     }
 
-    const result = await this.query(
-      filter,
-      {
-        page,
-        limit,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      },
-      ['user'],
-    );
-
-    return result;
+    return this.paginate(where, page, limit);
   }
 
-  private toSnapshot<T extends object>(
-    document: T | (T & { toObject: () => T }),
-  ): T {
-    if ('toObject' in document && typeof document.toObject === 'function') {
-      return document.toObject();
-    }
-    return document;
+  private async paginate(
+    where: Prisma.PurchaseOrderWhereInput,
+    page: number,
+    limit: number,
+  ) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
+        where,
+        include: ORDER_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.purchaseOrder.count({ where }),
+    ]);
+
+    return {
+      data: data.map((o) => this.shape(o)),
+      total,
+      page,
+      count: limit,
+    };
   }
 
-  private async buildPurchaseItemSnapshots(purchaseItems: PurchaseItemDto[]) {
+  // ==== Helpers ====
+
+  private itemCreateData(i: BuiltItem): Prisma.PurchaseItemCreateWithoutOrderInput {
+    return {
+      productRef: { connect: { id: i.productId } },
+      optionValue: { connect: { id: i.productOptionValueId } },
+      count: i.count,
+      price: i.price,
+      product: i.product,
+      productOptionValue: i.productOptionValue,
+    };
+  }
+
+  private async buildPurchaseItemSnapshots(
+    purchaseItems: PurchaseItemDto[],
+  ): Promise<BuiltItem[]> {
     return Promise.all(
-      purchaseItems.map(async (purchaseItem) => {
-        const product = await this.productModel
-          .findById(purchaseItem.productId)
-          .lean()
-          .exec();
+      purchaseItems.map(async (item) => {
+        const product = await this.prisma.product.findUnique({
+          where: { id: item.productId },
+        });
         if (!product) {
           throw new NotFoundException('Product not found');
         }
 
-        const productOptionValue = await this.optionValueService.findOne(
-          purchaseItem.productOptionValueId,
-        );
-        if (!productOptionValue) {
+        const optionValue = await this.prisma.optionValue.findUnique({
+          where: { id: item.productOptionValueId },
+        });
+        if (!optionValue) {
           throw new NotFoundException('Product option value not found');
         }
 
-        const productOptionValueSnapshot = this.toSnapshot(productOptionValue);
-
         return {
-          ...purchaseItem,
-          product,
-          productOptionValue: productOptionValueSnapshot,
-          price: productOptionValue.price,
+          productId: item.productId,
+          productOptionValueId: item.productOptionValueId,
+          count: item.count,
+          price: optionValue.price,
+          product: this.toJson(product),
+          productOptionValue: this.toJson(optionValue),
         };
       }),
     );
   }
 
-  private buildPurchasePriceDetail(
-    purchaseItems: Array<{ price: number; count: number }>,
-  ) {
-    const summaryPrice = purchaseItems.reduce(
-      (total, item) => total + item.price * item.count,
-      0,
-    );
-
-    return { summaryPrice };
+  private calcSummaryPrice(items: Array<{ price: number; count: number }>) {
+    return items.reduce((total, item) => total + item.price * item.count, 0);
   }
 
-  private toSnapshotPurchaseItems(
-    purchaseItems: unknown[] | undefined,
-  ): SnapshotPurchaseItem[] {
-    return (purchaseItems ?? []).map((item) => ({
-      productId: Number((item as Record<string, unknown>).productId),
-      productOptionValueId: String(
-        (item as Record<string, unknown>).productOptionValueId,
-      ),
-      count: Number((item as Record<string, unknown>).count ?? 0),
-    }));
+  private toSnapshotItems(items: unknown[] | undefined): SnapshotItem[] {
+    return (items ?? []).map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        productId: String(r.productId),
+        productOptionValueId: String(r.productOptionValueId),
+        count: Number(r.count ?? 0),
+      };
+    });
+  }
+
+  private toStatus(status: string | undefined): PurchaseOrderStatus | undefined {
+    if (!status) return undefined;
+    return Object.values(PurchaseOrderStatus).includes(
+      status as PurchaseOrderStatus,
+    )
+      ? (status as PurchaseOrderStatus)
+      : undefined;
   }
 
   private async handleInventoryOnStatusTransition(
+    tx: Prisma.TransactionClient,
     previousStatus: PurchaseOrderStatus | undefined,
     nextStatus: PurchaseOrderStatus | undefined,
-    previousItems: SnapshotPurchaseItem[],
-    nextItems: SnapshotPurchaseItem[],
+    previousItems: SnapshotItem[],
+    nextItems: SnapshotItem[],
   ) {
     if (!previousStatus || !nextStatus || previousStatus === nextStatus) {
       return;
@@ -288,7 +346,7 @@ export class PurchaseOrdersService extends BaseService<PurchaseOrderDocument> {
       nextStatus !== PurchaseOrderStatus.CANCELLED;
 
     if (movedOutFromCart) {
-      await this.applyInventoryDelta(nextItems, -1);
+      await this.applyInventoryDelta(tx, nextItems, -1);
       return;
     }
 
@@ -297,70 +355,30 @@ export class PurchaseOrdersService extends BaseService<PurchaseOrderDocument> {
       nextStatus === PurchaseOrderStatus.CANCELLED;
 
     if (movedToCancelledFromNonCart) {
-      await this.applyInventoryDelta(previousItems, 1);
-    }
-  }
-
-  private toPurchaseOrderStatus(
-    status: string | undefined,
-  ): PurchaseOrderStatus | undefined {
-    if (!status) {
-      return undefined;
-    }
-
-    return Object.values(PurchaseOrderStatus).includes(
-      status as PurchaseOrderStatus,
-    )
-      ? (status as PurchaseOrderStatus)
-      : undefined;
-  }
-
-  private applyDeliveredAtOnStatusTransition(
-    previousStatus: PurchaseOrderStatus | undefined,
-    nextStatus: PurchaseOrderStatus | undefined,
-    payload: { deliveriedAt?: Date },
-  ) {
-    if (
-      previousStatus !== PurchaseOrderStatus.DELIVERED &&
-      nextStatus === PurchaseOrderStatus.DELIVERED
-    ) {
-      payload.deliveriedAt = new Date();
+      await this.applyInventoryDelta(tx, previousItems, 1);
     }
   }
 
   private async applyInventoryDelta(
-    items: SnapshotPurchaseItem[],
+    tx: Prisma.TransactionClient,
+    items: SnapshotItem[],
     stockDirection: 1 | -1,
   ) {
-    if (!items.length) {
-      return;
+    for (const item of items) {
+      await tx.optionValue.updateMany({
+        where: { id: item.productOptionValueId },
+        data: {
+          stock: { increment: stockDirection * item.count },
+          purchaseCount: { increment: -stockDirection * item.count },
+        },
+      });
+      await tx.product.updateMany({
+        where: { id: item.productId },
+        data: {
+          stock: { increment: stockDirection * item.count },
+          purchaseCount: { increment: -stockDirection * item.count },
+        },
+      });
     }
-
-    const optionValueBulkOps = items.map((item) => ({
-      updateOne: {
-        filter: { _id: item.productOptionValueId },
-        update: {
-          $inc: {
-            stock: stockDirection * item.count,
-            purchaseCount: -stockDirection * item.count,
-          },
-        },
-      },
-    }));
-
-    const productBulkOps = items.map((item) => ({
-      updateOne: {
-        filter: { _id: Number(item.productId) },
-        update: {
-          $inc: {
-            stock: stockDirection * item.count,
-            purchaseCount: -stockDirection * item.count,
-          },
-        },
-      },
-    }));
-
-    await this.optionValueModel.bulkWrite(optionValueBulkOps);
-    await this.productModel.bulkWrite(productBulkOps);
   }
 }

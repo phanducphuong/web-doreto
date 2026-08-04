@@ -40,7 +40,7 @@ export default function useCategory() {
     return errors;
   };
 
-  const deleteCategory = async (categoryId: number): Promise<boolean> => {
+  const deleteCategory = async (categoryId: string): Promise<boolean> => {
     try {
       loadingStates.value.delete = true;
       const isConfirm = await messageService.confirm({

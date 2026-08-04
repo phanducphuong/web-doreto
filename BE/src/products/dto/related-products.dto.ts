@@ -8,28 +8,6 @@ import {
   Min,
 } from 'class-validator';
 
-function toNumberArray(value: unknown): number[] {
-  if (Array.isArray(value)) {
-    return value
-      .flatMap((item) => String(item).split(','))
-      .map((item) => Number(item.trim()))
-      .filter((item) => Number.isFinite(item));
-  }
-
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => Number(item.trim()))
-      .filter((item) => Number.isFinite(item));
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return [value];
-  }
-
-  return [];
-}
-
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -50,10 +28,10 @@ function toStringArray(value: unknown): string[] {
 
 export class RelatedProductsDto {
   @IsOptional()
-  @Transform(({ value }) => toNumberArray(value))
+  @Transform(({ value }) => toStringArray(value))
   @IsArray()
-  @IsInt({ each: true })
-  productIds: number[];
+  @IsString({ each: true })
+  productIds: string[];
 
   @IsOptional()
   @Transform(({ value }) => toStringArray(value))

@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateTagDto {
   @IsString()
@@ -9,6 +9,10 @@ export class CreateTagDto {
   icon?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   order?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

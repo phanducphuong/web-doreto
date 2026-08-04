@@ -1,19 +1,18 @@
-import { ProductOptionValueService } from './option-value.service';
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Product, ProductDocument } from './schemas/product.schema';
+import { Prisma } from '@prisma/client';
+import { isUUID } from 'class-validator';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { FilterProductDto } from './dto/filter-product.dto';
+import { OptionValueDto } from './dto/option-value.dto';
 import { IPaginatedResponse } from 'src/common/interfaces/paginated-response.interface';
-import { BaseService } from 'src/common/base/base.service';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, QueryFilter, Types } from 'mongoose';
-import { OptionValue } from './schemas/option-value.schema';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { normalizeText } from 'src/common/utils';
 import { ConfigService } from '@nestjs/config';
 import { GenerateProductDescriptionDto } from './dto/generate-product-description.dto';
@@ -21,250 +20,307 @@ import { GenerateProductDescriptionDto } from './dto/generate-product-descriptio
 interface GeminiResponsePart {
   text?: string;
 }
-
 interface GeminiResponseCandidate {
-  content?: {
-    parts?: GeminiResponsePart[];
-  };
+  content?: { parts?: GeminiResponsePart[] };
 }
-
 interface GeminiGenerateContentResponse {
   candidates?: GeminiResponseCandidate[];
 }
-
 interface GeminiRequestResult {
   ok: boolean;
   status: number;
   body: string;
 }
 
+const PRODUCT_INCLUDE = {
+  optionValues: { orderBy: { createdAt: 'asc' as const } },
+  categories: { include: { category: true } },
+  tags: { include: { tag: true } },
+};
+
 @Injectable()
-export class ProductsService extends BaseService<ProductDocument> {
+export class ProductsService {
   constructor(
-    @InjectModel(Product.name)
-    private readonly productModel: Model<ProductDocument>,
-    private readonly productOptionValueService: ProductOptionValueService,
+    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-  ) {
-    super(productModel);
+  ) {}
+
+  /** Nhào nặn product từ Prisma (bảng nối) về đúng shape FE mong đợi. */
+  private shape(product: any) {
+    if (!product) return product;
+    const categories = (product.categories ?? []).map((pc: any) => pc.category);
+    const tags = (product.tags ?? []).map((pt: any) => pt.tag);
+    const optionValues = product.optionValues ?? [];
+    const { categories: _c, tags: _t, ...rest } = product;
+    return {
+      ...rest,
+      categories,
+      tags,
+      optionValues,
+      categoryIds: categories.map((c: any) => c.id),
+      tagIds: tags.map((t: any) => t.id),
+      optionValueIds: optionValues.map((o: any) => o.id),
+    };
   }
 
-  async findOne(id: string | number): Promise<ProductDocument | null> {
-    const product = await this.productModel
-      .findById(id)
-      .populate('optionValues')
-      .populate('categories')
-      .populate('tags')
-      .exec();
+  private summaryOptionValue(
+    options: { price: number; stock?: number }[],
+  ): { minPrice: number; maxPrice: number; stock: number } {
+    if (!options.length) return { minPrice: 0, maxPrice: 0, stock: 0 };
+    const res = options.reduce(
+      (acc, option) => {
+        if (option.price > acc.maxPrice) acc.maxPrice = option.price;
+        if (option.price < acc.minPrice) acc.minPrice = option.price;
+        acc.stock += option.stock ?? 0;
+        return acc;
+      },
+      { minPrice: Infinity, maxPrice: 0, stock: 0 },
+    );
+    if (!Number.isFinite(res.minPrice)) res.minPrice = 0;
+    return res;
+  }
 
+  private optionValueData(o: OptionValueDto) {
+    return {
+      imageUrl: o.imageUrl,
+      price: o.price,
+      originalPrice: o.originalPrice,
+      purchaseCount: o.purchaseCount ?? 0,
+      stock: o.stock ?? 0,
+      productOptionNames: o.productOptionNames ?? [],
+    };
+  }
+
+  async findOne(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: PRODUCT_INCLUDE,
+    });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    return product as ProductDocument;
+    return this.shape(product);
   }
 
-  async create<ProductDocument>(createProductDto: CreateProductDto) {
-    const { optionValues, ...productData } = createProductDto;
+  async create(createProductDto: CreateProductDto) {
+    const { optionValues, categoryIds, tagIds, ...productData } =
+      createProductDto;
 
-    const product = await super.create(productData);
+    const options: OptionValueDto[] =
+      optionValues && optionValues.length > 0
+        ? optionValues
+        : [{ price: 0, productOptionNames: [] }];
 
-    // Tạo ProductOptions
-    const optionValueIds: Types.ObjectId[] = [];
-    let minPrice = Infinity,
-      maxPrice = 0,
-      stock = 0;
+    const { minPrice, maxPrice, stock } = this.summaryOptionValue(options);
 
-    if (optionValues && optionValues.length > 0) {
-      // Tạo các ProductOption từ dto
-      for (const option of optionValues) {
-        const createdOption =
-          await this.productOptionValueService.create(option);
-        optionValueIds.push(createdOption._id);
-        if (createdOption.price > maxPrice) maxPrice = createdOption.price;
-        if (createdOption.price < minPrice) minPrice = createdOption.price;
-        stock += createdOption.stock ?? 0;
-      }
-    } else {
-      // Tạo ProductOption mặc định nếu không có
-      const defaultOption = await this.productOptionValueService.create({
-        price: 0,
-      });
-      optionValueIds.push(defaultOption._id);
-    }
+    const created = await this.prisma.product.create({
+      data: {
+        name: createProductDto.name,
+        description: productData.description,
+        productOptions: productData.productOptions ?? [],
+        imageUrls: productData.imageUrls ?? [],
+        thumbnailUrls: productData.thumbnailUrls ?? [],
+        normalizedName: normalizeText(createProductDto.name),
+        minPrice,
+        maxPrice,
+        stock,
+        categories: categoryIds?.length
+          ? { create: categoryIds.map((categoryId) => ({ categoryId })) }
+          : undefined,
+        tags: tagIds?.length
+          ? { create: tagIds.map((tagId) => ({ tagId })) }
+          : undefined,
+        optionValues: {
+          create: options.map((o) => this.optionValueData(o)),
+        },
+      },
+      include: PRODUCT_INCLUDE,
+    });
 
-    // Cập nhật Product với ProductOptions
-    product.optionValueIds = optionValueIds;
-    product.minPrice = minPrice;
-    product.maxPrice = maxPrice;
-    product.stock = stock;
-
-    await product.save();
-
-    return product as ProductDocument;
+    return this.shape(created);
   }
 
   async queryProduct(
     filterDto: FilterProductDto,
-  ): Promise<IPaginatedResponse<Product>> {
+  ): Promise<IPaginatedResponse<any>> {
     const {
       keyword,
       minPrice,
       maxPrice,
       categoryId,
       tagId,
-      // Tách riêng các options dùng cho BaseService
       sortBy,
       sortOrder,
       page = 1,
       limit = 10,
     } = filterDto;
 
-    // 1. Xây dựng filter query (Chỉ chứa logic đặc thù của Product)
-    const filter: QueryFilter<ProductDocument> = {};
+    const AND: Prisma.ProductWhereInput[] = [];
 
     if (keyword) {
       const normalized = normalizeText(keyword);
-
-      const orConditions: QueryFilter<ProductDocument>[] = [
-        {
-          normalizedName: {
-            $regex: normalized,
-            $options: 'i',
-          },
-        },
+      const or: Prisma.ProductWhereInput[] = [
+        { normalizedName: { contains: normalized, mode: 'insensitive' } },
       ];
-
-      // nếu keyword là số → thêm điều kiện _id
-      if (!isNaN(Number(keyword))) {
-        orConditions.push({
-          _id: Number(keyword),
-        });
+      if (isUUID(keyword)) {
+        or.push({ id: keyword });
       }
-
-      filter.$or = orConditions;
+      AND.push({ OR: or });
     }
 
-    const priceFilters: QueryFilter<ProductDocument>[] = [];
-    if (minPrice !== undefined) {
-      priceFilters.push({ minPrice: { $gte: minPrice } });
-    }
-    if (maxPrice !== undefined) {
-      priceFilters.push({ maxPrice: { $lte: maxPrice } });
-    }
-    if (priceFilters.length > 0) {
-      filter.$and = priceFilters;
-    }
+    if (minPrice !== undefined) AND.push({ minPrice: { gte: minPrice } });
+    if (maxPrice !== undefined) AND.push({ maxPrice: { lte: maxPrice } });
+    if (categoryId) AND.push({ categories: { some: { categoryId } } });
+    if (tagId) AND.push({ tags: { some: { tagId } } });
 
-    if (categoryId) {
-      filter.categoryIds = { $in: [categoryId] };
-    }
+    const where: Prisma.ProductWhereInput = AND.length ? { AND } : {};
+    const orderBy = this.buildOrderBy(sortBy, sortOrder);
+    const skip = (page - 1) * limit;
 
-    if (tagId) {
-      filter.tagIds = { $in: [tagId] };
-    }
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: PRODUCT_INCLUDE,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
 
-    // 2. Xây dựng options cho phân trang và sắp xếp
-    const options = {
-      sortBy,
-      sortOrder,
+    return {
+      data: data.map((p) => this.shape(p)),
+      total,
       page,
-      limit,
+      count: limit,
     };
-
-    // 3. Uỷ quyền hoàn toàn cho BaseService xử lý phần còn lại
-    // Hàm super.query đã xử lý sẵn countDocuments, .find(), .sort(), .skip(), .limit() và return đúng format.
-    return super.query(filter, options, ['optionValues', 'tags']);
   }
 
-  async update<ProductDocument>(
-    id: number,
-    updateProductDto: UpdateProductDto,
-  ) {
-    const { optionValues, ...productData } = updateProductDto;
+  private buildOrderBy(
+    sortBy?: string,
+    sortOrder?: 'asc' | 'desc',
+  ): Prisma.ProductOrderByWithRelationInput {
+    const dir: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
+    if (!sortBy) return { createdAt: 'desc' };
+    const field = sortBy === 'price' ? 'minPrice' : sortBy;
+    return { [field]: dir };
+  }
 
-    // Cập nhật Product
-    const product = await super.update(id, productData);
+  async update(id: string, updateProductDto: UpdateProductDto) {
+    const { optionValues, categoryIds, tagIds, ...productData } =
+      updateProductDto;
 
-    // Nếu có update productOption
-    if (optionValues && optionValues.length > 0) {
-      // Cập nhật hoặc tạo ProductOptions
-      const newOptionValues = optionValues.map((option) => ({
-        ...option,
-        _id: option._id || new Types.ObjectId(),
-      }));
-      await this.productOptionValueService.upsertMany(newOptionValues);
-      const { minPrice, maxPrice, stock } =
-        this.sumaryOptionValue(newOptionValues);
+    const scalarData: Prisma.ProductUpdateInput = { ...productData };
+    if (productData.name !== undefined) {
+      scalarData.normalizedName = normalizeText(productData.name);
+    }
 
-      product.minPrice = minPrice;
-      product.maxPrice = maxPrice;
-      product.stock = stock;
+    await this.prisma.$transaction(async (tx) => {
+      // Bảo đảm product tồn tại + cập nhật field vô hướng
+      await tx.product.update({ where: { id }, data: scalarData });
 
-      // Lấy ID của những thằng ĐÃ CÓ (được sửa)
-      const updatedIds = newOptionValues.map((option) => option._id.toString());
-
-      // Xóa ProductOptions không còn trong danh sách mới
-      if (product.optionValueIds && product.optionValueIds.length > 0) {
-        const oldOptionIdStrings = product.optionValueIds
-          .filter(Boolean)
-          .map((id) => id.toString());
-        const idsToDelete = oldOptionIdStrings.filter(
-          (id) => !updatedIds.includes(id),
-        );
-
-        await this.productOptionValueService.deleteMany({
-          _id: { $in: idsToDelete },
-        });
+      // Đồng bộ danh mục (bảng nối)
+      if (categoryIds !== undefined) {
+        await tx.productCategory.deleteMany({ where: { productId: id } });
+        if (categoryIds.length) {
+          await tx.productCategory.createMany({
+            data: categoryIds.map((categoryId) => ({
+              productId: id,
+              categoryId,
+            })),
+          });
+        }
       }
 
-      // Cập nhật Product với ProductOptions mới
-      product.optionValueIds = updatedIds as unknown as Types.ObjectId[];
-      await product.save();
-    }
+      // Đồng bộ nhãn (bảng nối)
+      if (tagIds !== undefined) {
+        await tx.productTag.deleteMany({ where: { productId: id } });
+        if (tagIds.length) {
+          await tx.productTag.createMany({
+            data: tagIds.map((tagId) => ({ productId: id, tagId })),
+          });
+        }
+      }
 
-    return product as ProductDocument;
+      // Đồng bộ biến thể
+      if (optionValues && optionValues.length > 0) {
+        const keepIds = optionValues
+          .filter((o) => o._id)
+          .map((o) => o._id as string);
+
+        await tx.optionValue.deleteMany({
+          where: {
+            productId: id,
+            ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
+          },
+        });
+
+        for (const o of optionValues) {
+          const payload = this.optionValueData(o);
+          if (o._id) {
+            await tx.optionValue.update({ where: { id: o._id }, data: payload });
+          } else {
+            await tx.optionValue.create({
+              data: { productId: id, ...payload },
+            });
+          }
+        }
+
+        const { minPrice, maxPrice, stock } =
+          this.summaryOptionValue(optionValues);
+        await tx.product.update({
+          where: { id },
+          data: { minPrice, maxPrice, stock },
+        });
+      }
+    });
+
+    return this.findOne(id);
   }
 
-  async getRelatedProducts(productId: number) {
-    const product = await this.findOne(productId);
-    if (!product) {
-      throw new NotFoundException('Product not found');
+  async remove(id: string) {
+    try {
+      return await this.prisma.product.delete({ where: { id } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2025') throw new NotFoundException('Product not found');
+        if (err.code === 'P2003') {
+          throw new ConflictException(
+            'Không thể xóa sản phẩm đã phát sinh trong đơn hàng',
+          );
+        }
+      }
+      throw err;
     }
+  }
 
-    const categoryIds = product.categoryIds ?? [];
+  async getRelatedProducts(productId: string) {
+    const product = await this.findOne(productId);
+
+    const categoryIds: string[] = product.categoryIds ?? [];
     const nameTokens = this.extractNameTokens(product.normalizedName);
 
-    const queryConditions: QueryFilter<ProductDocument>[] = [];
+    const or: Prisma.ProductWhereInput[] = [];
     if (categoryIds.length > 0) {
-      queryConditions.push({ categoryIds: { $in: categoryIds } });
+      or.push({ categories: { some: { categoryId: { in: categoryIds } } } });
     }
     if (nameTokens.length > 0) {
-      queryConditions.push({
-        normalizedName: {
-          $regex: nameTokens.join('|'),
-          $options: 'i',
-        },
+      or.push({
+        OR: nameTokens.map((token) => ({
+          normalizedName: { contains: token, mode: 'insensitive' as const },
+        })),
       });
     }
 
-    if (queryConditions.length === 0) {
-      return [];
-    }
+    if (or.length === 0) return [];
 
-    const relatedProducts = await this.productModel
-      .find({
-        _id: { $ne: product._id },
-        isActive: true,
-        $or: queryConditions,
-      })
-      .populate('optionValues')
-      .populate('categories')
-      .populate('tags')
-      .lean()
-      .exec();
+    const candidates = await this.prisma.product.findMany({
+      where: { id: { not: product.id }, isActive: true, OR: or },
+      include: PRODUCT_INCLUDE,
+    });
 
-    return relatedProducts
+    return candidates
+      .map((raw) => this.shape(raw))
       .map((relatedProduct) => {
         const relatedCategoryIds = relatedProduct.categoryIds ?? [];
         const sameCategoryScore = categoryIds.filter((id) =>
@@ -279,21 +335,16 @@ export class ProductsService extends BaseService<ProductDocument> {
 
         return {
           ...relatedProduct,
-          _relatedScore: {
-            sameCategoryScore,
-            similarNameScore,
-          },
+          _relatedScore: { sameCategoryScore, similarNameScore },
         };
       })
       .sort((a, b) => {
         const categoryDiff =
           b._relatedScore.sameCategoryScore - a._relatedScore.sameCategoryScore;
         if (categoryDiff !== 0) return categoryDiff;
-
         const nameDiff =
           b._relatedScore.similarNameScore - a._relatedScore.similarNameScore;
         if (nameDiff !== 0) return nameDiff;
-
         return (b.purchaseCount ?? 0) - (a.purchaseCount ?? 0);
       })
       .slice(0, 8)
@@ -301,7 +352,7 @@ export class ProductsService extends BaseService<ProductDocument> {
   }
 
   async getSuggestedProducts(
-    productIds: number[] = [],
+    productIds: string[] = [],
     keywords: string[] = [],
     limit = 8,
   ) {
@@ -316,9 +367,9 @@ export class ProductsService extends BaseService<ProductDocument> {
 
     let mergedSuggestions = baseSuggestions;
     if (remainingCount > 0) {
-      const excludedIds = new Set<number>(uniqueProductIds);
+      const excludedIds = new Set<string>(uniqueProductIds);
       baseSuggestions.forEach((product) => {
-        excludedIds.add(Number(product._id));
+        excludedIds.add(product.id);
       });
       const keywordSuggestions = await this.getSuggestedByKeywords(
         keywords,
@@ -331,108 +382,41 @@ export class ProductsService extends BaseService<ProductDocument> {
     const total = mergedSuggestions.length;
     const data = mergedSuggestions.slice(0, safeLimit);
 
-    return {
-      data,
-      total,
-      count: safeLimit,
-    };
+    return { data, total, count: safeLimit };
   }
 
-  async generateDescriptionWithAI(dto: GenerateProductDescriptionDto) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new BadRequestException('Missing GEMINI_API_KEY in environment');
-    }
+  private async getSuggestedByProductIds(productIds: string[]) {
+    if (productIds.length === 0) return [];
 
-    const requestedModel = this.configService.get<string>('GEMINI_MODEL');
-    const modelCandidates = this.getModelCandidates(requestedModel);
-    const prompt = this.buildDescriptionPrompt(dto);
-    let payload: GeminiGenerateContentResponse | null = null;
-    let usedModel: string | null = null;
-    let lastFailure: GeminiRequestResult | null = null;
-
-    for (const model of modelCandidates) {
-      const result = await this.requestGemini(apiKey, model, prompt);
-      if (!result.ok) {
-        lastFailure = result;
-        // Try next model on not found model id.
-        if (result.status === 404) {
-          continue;
-        }
-        break;
-      }
-
-      payload = JSON.parse(result.body) as GeminiGenerateContentResponse;
-      usedModel = model;
-      break;
-    }
-
-    if (!payload || !usedModel) {
-      const status = lastFailure?.status ?? 500;
-      const reason = lastFailure?.body?.slice(0, 300) || 'Unknown error';
-      throw new InternalServerErrorException(
-        `Gemini request failed (${status}): ${reason}`,
-      );
-    }
-
-    const generatedText =
-      payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text?.trim() ?? '')
-        .filter(Boolean)
-        .join('\n') ?? '';
-
-    if (!generatedText) {
-      throw new InternalServerErrorException(
-        'Gemini did not return generated description',
-      );
-    }
-
-    return {
-      description: generatedText,
-      model: usedModel,
-    };
-  }
-
-  private async getSuggestedByProductIds(productIds: number[]) {
-    if (productIds.length === 0) {
-      return [];
-    }
-
-    const sourceProducts = await this.productModel
-      .find({
-        _id: { $in: productIds },
-        isActive: true,
+    const sourceProducts = (
+      await this.prisma.product.findMany({
+        where: { id: { in: productIds }, isActive: true },
+        include: PRODUCT_INCLUDE,
       })
-      .lean()
-      .exec();
+    ).map((p) => this.shape(p));
 
-    if (sourceProducts.length === 0) {
-      return [];
-    }
+    if (sourceProducts.length === 0) return [];
 
     const sourceCategoryIds = [
-      ...new Set(
-        sourceProducts.flatMap((product) => product.categoryIds ?? []),
-      ),
+      ...new Set(sourceProducts.flatMap((product) => product.categoryIds ?? [])),
     ];
     const sourceTagIds = [
       ...new Set(sourceProducts.flatMap((product) => product.tagIds ?? [])),
     ];
 
-    const candidates = await this.productModel
-      .find({
-        _id: { $nin: productIds },
-        isActive: true,
-        $or: [
-          { categoryIds: { $in: sourceCategoryIds } },
-          { tagIds: { $in: sourceTagIds } },
-        ],
+    const candidates = (
+      await this.prisma.product.findMany({
+        where: {
+          id: { notIn: productIds },
+          isActive: true,
+          OR: [
+            { categories: { some: { categoryId: { in: sourceCategoryIds } } } },
+            { tags: { some: { tagId: { in: sourceTagIds } } } },
+          ],
+        },
+        include: PRODUCT_INCLUDE,
       })
-      .populate('optionValues')
-      .populate('categories')
-      .populate('tags')
-      .lean()
-      .exec();
+    ).map((p) => this.shape(p));
 
     return candidates
       .map((product) => {
@@ -471,25 +455,20 @@ export class ProductsService extends BaseService<ProductDocument> {
         const categoryPriorityDiff =
           b._suggestScore.categoryPriority - a._suggestScore.categoryPriority;
         if (categoryPriorityDiff !== 0) return categoryPriorityDiff;
-
         const categoryLevelDiff =
           b._suggestScore.categoryMatchLevel -
           a._suggestScore.categoryMatchLevel;
         if (categoryLevelDiff !== 0) return categoryLevelDiff;
-
         const categoryCountDiff =
           b._suggestScore.categoryMatchCount -
           a._suggestScore.categoryMatchCount;
         if (categoryCountDiff !== 0) return categoryCountDiff;
-
         const tagLevelDiff =
           b._suggestScore.tagMatchLevel - a._suggestScore.tagMatchLevel;
         if (tagLevelDiff !== 0) return tagLevelDiff;
-
         const tagCountDiff =
           b._suggestScore.tagMatchCount - a._suggestScore.tagMatchCount;
         if (tagCountDiff !== 0) return tagCountDiff;
-
         return b._suggestScore.purchaseCount - a._suggestScore.purchaseCount;
       })
       .map(({ _suggestScore, ...product }) => product);
@@ -498,7 +477,7 @@ export class ProductsService extends BaseService<ProductDocument> {
   private async getSuggestedByKeywords(
     keywords: string[],
     limit: number,
-    excludedIds: Set<number> = new Set<number>(),
+    excludedIds: Set<string> = new Set<string>(),
   ) {
     const normalizedKeywords = [
       ...new Set(
@@ -509,26 +488,21 @@ export class ProductsService extends BaseService<ProductDocument> {
       ),
     ];
 
-    if (normalizedKeywords.length === 0) {
-      return [];
-    }
+    if (normalizedKeywords.length === 0) return [];
 
-    const regexPattern = normalizedKeywords.map((keyword) =>
-      keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-    );
-
-    const candidates = await this.productModel
-      .find({
-        _id: { $nin: [...excludedIds] },
-        isActive: true,
-        normalizedName: { $regex: regexPattern.join('|'), $options: 'i' },
+    const candidates = (
+      await this.prisma.product.findMany({
+        where: {
+          id: { notIn: [...excludedIds] },
+          isActive: true,
+          OR: normalizedKeywords.map((keyword) => ({
+            normalizedName: { contains: keyword, mode: 'insensitive' as const },
+          })),
+        },
+        include: PRODUCT_INCLUDE,
+        take: Math.max(limit * 5, limit),
       })
-      .populate('optionValues')
-      .populate('categories')
-      .populate('tags')
-      .lean()
-      .limit(Math.max(limit * 5, limit))
-      .exec();
+    ).map((p) => this.shape(p));
 
     return candidates
       .map((product) => {
@@ -538,9 +512,7 @@ export class ProductsService extends BaseService<ProductDocument> {
         ).length;
         const partialMatchCount = normalizedKeywords.reduce((acc, keyword) => {
           const keywordTokens = keyword.split(/\s+/).filter(Boolean);
-          if (keywordTokens.length === 0) {
-            return acc;
-          }
+          if (keywordTokens.length === 0) return acc;
           const matchedTokens = keywordTokens.filter((token) =>
             name.includes(token),
           ).length;
@@ -565,34 +537,67 @@ export class ProductsService extends BaseService<ProductDocument> {
         const fullMatchDiff =
           b._keywordScore.fullMatchCount - a._keywordScore.fullMatchCount;
         if (fullMatchDiff !== 0) return fullMatchDiff;
-
         const partialMatchDiff =
           b._keywordScore.partialMatchCount - a._keywordScore.partialMatchCount;
         if (partialMatchDiff !== 0) return partialMatchDiff;
-
         return b._keywordScore.purchaseCount - a._keywordScore.purchaseCount;
       })
       .map(({ _keywordScore, ...product }) => product);
   }
 
-  private sumaryOptionValue(optionValues: OptionValue[]) {
-    return optionValues.reduce(
-      (acc, option) => {
-        if (option.price > acc.maxPrice) acc.maxPrice = option.price;
-        if (option.price < acc.minPrice) acc.minPrice = option.price;
-        acc.stock += option.stock ?? 0;
-        return acc;
-      },
-      { minPrice: Infinity, maxPrice: 0, stock: 0 },
-    );
+  private extractNameTokens(normalizedName: string | undefined): string[] {
+    if (!normalizedName) return [];
+    return [...new Set(normalizedName.split(/\s+/).filter((token) => token))];
   }
 
-  private extractNameTokens(normalizedName: string | undefined): string[] {
-    if (!normalizedName) {
-      return [];
+  // ==== AI viết mô tả sản phẩm (Gemini) — không đụng DB ====
+
+  async generateDescriptionWithAI(dto: GenerateProductDescriptionDto) {
+    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new BadRequestException('Missing GEMINI_API_KEY in environment');
     }
 
-    return [...new Set(normalizedName.split(/\s+/).filter((token) => token))];
+    const requestedModel = this.configService.get<string>('GEMINI_MODEL');
+    const modelCandidates = this.getModelCandidates(requestedModel);
+    const prompt = this.buildDescriptionPrompt(dto);
+    let payload: GeminiGenerateContentResponse | null = null;
+    let usedModel: string | null = null;
+    let lastFailure: GeminiRequestResult | null = null;
+
+    for (const model of modelCandidates) {
+      const result = await this.requestGemini(apiKey, model, prompt);
+      if (!result.ok) {
+        lastFailure = result;
+        if (result.status === 404) continue;
+        break;
+      }
+      payload = JSON.parse(result.body) as GeminiGenerateContentResponse;
+      usedModel = model;
+      break;
+    }
+
+    if (!payload || !usedModel) {
+      const status = lastFailure?.status ?? 500;
+      const reason = lastFailure?.body?.slice(0, 300) || 'Unknown error';
+      throw new InternalServerErrorException(
+        `Gemini request failed (${status}): ${reason}`,
+      );
+    }
+
+    const generatedText =
+      payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text?.trim() ?? '')
+        .filter(Boolean)
+        .join('\n') ?? '';
+
+    if (!generatedText) {
+      throw new InternalServerErrorException(
+        'Gemini did not return generated description',
+      );
+    }
+
+    return { description: generatedText, model: usedModel };
   }
 
   private buildDescriptionPrompt(dto: GenerateProductDescriptionDto) {
@@ -603,14 +608,14 @@ export class ProductsService extends BaseService<ProductDocument> {
     const tagNames = dto.tagNames?.length ? dto.tagNames.join(', ') : 'N/A';
 
     return [
-      'You are an e-commerce copywriter for a fashion store.',
+      'You are an e-commerce copywriter.',
       'Rewrite and improve product description in Vietnamese.',
       'Output is text only with enter lines. can using icons for decoration.',
       `Product name: ${productName}`,
       `Categories: ${categoryNames}`,
       `Tags: ${tagNames}`,
       `Raw input text from user: ${dto.rawText}`,
-      'Focus on material, fit, comfort, and outfit styling suggestions.',
+      'Focus on practical benefits, style, and easy visualization in real space.',
     ].join('\n');
   }
 
@@ -624,9 +629,7 @@ export class ProductsService extends BaseService<ProductDocument> {
   }
 
   private normalizeModelName(model?: string) {
-    if (!model) {
-      return undefined;
-    }
+    if (!model) return undefined;
     return model.replace(/^models\//, '').trim();
   }
 
@@ -640,12 +643,7 @@ export class ProductsService extends BaseService<ProductDocument> {
           'X-goog-api-key': apiKey,
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
         }),
       },
     );

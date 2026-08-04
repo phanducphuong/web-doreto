@@ -49,7 +49,7 @@
             circle
             class="w-9 h-9 text-danger"
             :icon="Trash2"
-            @click="() => deleteCategory(Number(row._id)).then(() => onDeleteCategorySuccess())"
+            @click="() => deleteCategory(row._id).then(() => onDeleteCategorySuccess())"
           />
         </div>
       </template>

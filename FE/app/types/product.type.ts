@@ -17,7 +17,7 @@ export type TOptionValue = {
 };
 
 export type TProduct = {
-  _id: number;
+  _id: string;
   name: string;
   description?: string;
   descriptionFrameId?: number | null;
@@ -27,8 +27,8 @@ export type TProduct = {
   imageFiles: File[];
   thumbnailUrls: string[];
   thumbnailFiles: File[];
-  categoryIds: number[];
-  tagIds: number[];
+  categoryIds: string[];
+  tagIds: string[];
   productOptions: string[];
   optionValueIds: string[];
   optionValues: TOptionValue[];
@@ -59,7 +59,7 @@ export type TProductQueryParams = TPaginateRequest & {
   keyword?: string;
   minPrice?: number;
   maxPrice?: number;
-  categoryId?: number;
+  categoryId?: string;
   sortBy?: "price" | "updatedAt" | "purchaseCount";
   sortOrder?: "asc" | "desc";
 };
@@ -81,7 +81,7 @@ export type TProductFormError = {
 };
 
 export type TProductSuggestedQueryParams = {
-  productIds: number[];
+  productIds: string[];
   limit: number;
   keywords: string[];
 };

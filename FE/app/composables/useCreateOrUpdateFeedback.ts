@@ -24,14 +24,14 @@ export default function useCreateOrUpdateFeedback(options: TCreateOrUpdateFeedba
   const error = ref("");
 
   const submitFeedback = async (payload: TFeedbackComposerPayload): Promise<TFeedback | null> => {
-    const resolvedProductId = Number(toValue(options.productId));
+    const resolvedProductId = toValue(options.productId);
 
     if (!toValue(options.canManageFeedback)) {
       error.value = FEEDBACK_MESSAGES.purchaseRequired;
       return null;
     }
 
-    if (!Number.isFinite(resolvedProductId)) {
+    if (!resolvedProductId) {
       error.value = FEEDBACK_MESSAGES.loadMineFailed;
       return null;
     }

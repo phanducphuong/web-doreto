@@ -3,113 +3,108 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { QueryFilter, Model, Types } from 'mongoose';
-import {
-  FeedbackProduct,
-  FeedbackProductDocument,
-} from './schemas/feedback-product.schema';
-import { BaseService } from 'src/common/base/base.service';
+import { Prisma } from '@prisma/client';
+import { isUUID } from 'class-validator';
 import { CreateFeedbackProductDto } from './dto/create-feedback-product.dto';
-import { Product, ProductDocument } from 'src/products/schemas/product.schema';
 import { Role } from 'src/common/enums/role.enum';
-import {
-  PurchaseOrder,
-  PurchaseOrderDocument,
-} from 'src/purchase-orders/schemas/purchase-order.schema';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { ReplyFeedbackProductDto } from './dto/reply-feedback-product.dto';
 import { QueryFeedbackManagementDto } from './dto/query-feedback-management.dto';
 
-function productIdMatchValues(productId: number): (number | string)[] {
-  return [productId, String(productId)];
-}
+const USER_SELECT = { id: true, name: true, email: true };
+const ORDER_SELECT = {
+  id: true,
+  status: true,
+  createdAt: true,
+  purchaseItems: true,
+};
+
+const FEEDBACK_INCLUDE = {
+  user: { select: USER_SELECT },
+  order: { select: ORDER_SELECT },
+  replier: { select: USER_SELECT },
+};
 
 @Injectable()
-export class FeedbackProductsService extends BaseService<FeedbackProductDocument> {
-  constructor(
-    @InjectModel(FeedbackProduct.name)
-    private readonly feedbackProductModel: Model<FeedbackProductDocument>,
-    @InjectModel(Product.name)
-    private readonly productModel: Model<ProductDocument>,
-    @InjectModel(PurchaseOrder.name)
-    private readonly purchaseOrderModel: Model<PurchaseOrderDocument>,
-  ) {
-    super(feedbackProductModel);
+export class FeedbackProductsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Giả lập populate kiểu Mongoose: gán object vào userId/purchaseOrderId/repliedBy. */
+  private populatedShape(fb: any) {
+    const { user, order, replier, ...rest } = fb;
+    return {
+      ...rest,
+      userId: user ?? rest.userId,
+      purchaseOrderId: order ?? rest.purchaseOrderId,
+      repliedBy: replier ?? rest.repliedBy,
+    };
   }
 
-  private get purchaseOrderCollectionName(): string {
-    return this.purchaseOrderModel.collection.name;
+  /** Shape cho trang quản trị: dùng key user/purchaseOrder/repliedBy. */
+  private managementShape(fb: any) {
+    const { user, order, replier, ...rest } = fb;
+    return {
+      ...rest,
+      user: user ?? undefined,
+      purchaseOrder: order ?? undefined,
+      repliedBy: replier ?? undefined,
+    };
   }
 
-  async createOrUpdateFeedback(
-    userId: string,
-    dto: CreateFeedbackProductDto,
-  ): Promise<FeedbackProductDocument> {
+  async createOrUpdateFeedback(userId: string, dto: CreateFeedbackProductDto) {
     if (!dto.comment && dto.score === undefined && !dto.images?.length) {
       throw new BadRequestException(
         'Feedback must include comment, score, or images',
       );
     }
 
-    const purchaseOrderIdString: string = dto.purchaseOrderId;
     await this.assertUserOwnsDeliverablePurchaseOrder(
       userId,
-      purchaseOrderIdString,
+      dto.purchaseOrderId,
     );
 
-    const purchaseOrderId = new Types.ObjectId(purchaseOrderIdString);
-    const setData: Partial<FeedbackProduct> = {
-      score: dto.score,
-      isActive: true,
-    };
-
-    if (dto.comment !== undefined) {
-      setData.comment = dto.comment;
-    }
-
-    if (dto.images !== undefined) {
-      setData.images = dto.images;
-    }
-
-    const feedback = await this.feedbackProductModel
-      .findOneAndUpdate(
-        {
-          userId: new Types.ObjectId(userId),
-          purchaseOrderId,
+    const feedback = await this.prisma.feedbackProduct.upsert({
+      where: {
+        userId_purchaseOrderId: {
+          userId,
+          purchaseOrderId: dto.purchaseOrderId,
         },
-        {
-          $set: setData,
-          $setOnInsert: {
-            userId: new Types.ObjectId(userId),
-            purchaseOrderId,
-          },
-        },
-        { new: true, upsert: true },
-      )
-      .exec();
+      },
+      update: {
+        score: dto.score,
+        isActive: true,
+        ...(dto.comment !== undefined ? { comment: dto.comment } : {}),
+        ...(dto.images !== undefined ? { images: dto.images } : {}),
+      },
+      create: {
+        userId,
+        purchaseOrderId: dto.purchaseOrderId,
+        score: dto.score,
+        isActive: true,
+        comment: dto.comment,
+        images: dto.images ?? [],
+      },
+    });
 
     await Promise.all([
-      this.purchaseOrderModel
-        .updateOne({ _id: purchaseOrderId }, { $set: { isFeedbacked: true } })
-        .exec(),
-      this.syncRatingStatsForProductsInPurchaseOrder(purchaseOrderId),
+      this.prisma.purchaseOrder.update({
+        where: { id: dto.purchaseOrderId },
+        data: { isFeedbacked: true },
+      }),
+      this.syncRatingStatsForProductsInPurchaseOrder(dto.purchaseOrderId),
     ]);
 
     return feedback;
   }
 
   async findAll() {
-    return this.feedbackProductModel
-      .find({ isActive: true })
-      .populate('userId', 'name email')
-      .populate({
-        path: 'purchaseOrderId',
-        select: 'status purchaseItems createdAt',
-      })
-      .populate('repliedBy', 'name email')
-      .sort({ createdAt: -1 })
-      .exec();
+    const rows = await this.prisma.feedbackProduct.findMany({
+      where: { isActive: true },
+      include: FEEDBACK_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.populatedShape(r));
   }
 
   async findForManagement(query: QueryFeedbackManagementDto) {
@@ -123,134 +118,41 @@ export class FeedbackProductsService extends BaseService<FeedbackProductDocument
     } = query;
     const skip = (page - 1) * limit;
 
-    const matchStage: Record<string, unknown> = { isActive: true };
-    if (score !== undefined) {
-      matchStage.score = score;
-    }
+    const where: Prisma.FeedbackProductWhereInput = { isActive: true };
+    if (score !== undefined) where.score = score;
 
     if (replyStatus === 'replied') {
-      matchStage.$or = [
-        { repliedAt: { $exists: true, $ne: null } },
-        { adminReply: { $exists: true, $ne: null } },
-      ];
+      where.OR = [{ repliedAt: { not: null } }, { adminReply: { not: null } }];
     } else if (replyStatus === 'unreplied') {
-      matchStage.$and = [
-        {
-          $or: [{ repliedAt: { $exists: false } }, { repliedAt: null }],
-        },
-        {
-          $or: [{ adminReply: { $exists: false } }, { adminReply: null }],
-        },
-      ];
+      where.AND = [{ repliedAt: null }, { adminReply: null }];
     }
 
-    if (hasImage === 1) {
-      matchStage['images.0'] = { $exists: true };
-    } else if (hasImage === 0) {
-      matchStage['images.0'] = { $exists: false };
-    }
-
-    const pipeline: Record<string, unknown>[] = [
-      { $match: matchStage },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'user',
-        },
-      },
-      { $unwind: '$user' },
-    ];
+    if (hasImage === 1) where.images = { isEmpty: false };
+    else if (hasImage === 0) where.images = { isEmpty: true };
 
     if (reviewerKeyword?.trim()) {
-      const keyword = reviewerKeyword.trim();
-      pipeline.push({
-        $match: {
-          $or: [
-            { 'user.name': { $regex: keyword, $options: 'i' } },
-            { 'user.email': { $regex: keyword, $options: 'i' } },
-          ],
-        },
-      });
+      const kw = reviewerKeyword.trim();
+      where.user = {
+        OR: [
+          { name: { contains: kw, mode: 'insensitive' } },
+          { email: { contains: kw, mode: 'insensitive' } },
+        ],
+      };
     }
 
-    pipeline.push(
-      {
-        $lookup: {
-          from: this.purchaseOrderCollectionName,
-          localField: 'purchaseOrderId',
-          foreignField: '_id',
-          as: 'purchaseOrder',
-        },
-      },
-      {
-        $unwind: {
-          path: '$purchaseOrder',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'repliedBy',
-          foreignField: '_id',
-          as: 'replier',
-        },
-      },
-      {
-        $unwind: {
-          path: '$replier',
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          comment: 1,
-          images: 1,
-          score: 1,
-          adminReply: 1,
-          replyImages: 1,
-          repliedAt: 1,
-          createdAt: 1,
-          updatedAt: 1,
-          purchaseOrderId: 1,
-          userId: 1,
-          user: { _id: '$user._id', name: '$user.name', email: '$user.email' },
-          purchaseOrder: {
-            _id: '$purchaseOrder._id',
-            status: '$purchaseOrder.status',
-            purchaseItems: '$purchaseOrder.purchaseItems',
-            createdAt: '$purchaseOrder.createdAt',
-          },
-          repliedBy: {
-            _id: '$replier._id',
-            name: '$replier.name',
-            email: '$replier.email',
-          },
-        },
-      },
-    );
-
-    const [data, totalResult] = await Promise.all([
-      this.feedbackProductModel
-        .aggregate([
-          ...(pipeline as any[]),
-          { $sort: { createdAt: -1 } },
-          { $skip: skip },
-          { $limit: limit },
-        ])
-        .exec(),
-      this.feedbackProductModel
-        .aggregate([...(pipeline as any[]), { $count: 'total' }])
-        .exec(),
+    const [rows, total] = await Promise.all([
+      this.prisma.feedbackProduct.findMany({
+        where,
+        include: FEEDBACK_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.feedbackProduct.count({ where }),
     ]);
 
-    const total = totalResult[0]?.total ?? 0;
-
     return {
-      data,
+      data: rows.map((r) => this.managementShape(r)),
       total,
       page,
       limit,
@@ -258,105 +160,64 @@ export class FeedbackProductsService extends BaseService<FeedbackProductDocument
     };
   }
 
-  async findByProductId(productId: number) {
-    const orderIds = await this.purchaseOrderIdsContainingProduct(productId);
-    return this.feedbackProductModel
-      .find({ purchaseOrderId: { $in: orderIds }, isActive: true })
-      .populate('userId', 'name email')
-      .populate({
-        path: 'purchaseOrderId',
-        select: 'status purchaseItems createdAt',
-      })
-      .populate('repliedBy', 'name email')
-      .sort({ createdAt: -1 })
-      .exec();
+  async findByProductId(productId: string) {
+    const rows = await this.prisma.feedbackProduct.findMany({
+      where: {
+        isActive: true,
+        order: { purchaseItems: { some: { productId } } },
+      },
+      include: FEEDBACK_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.populatedShape(r));
   }
 
   async findByUserId(userId: string) {
-    return this.feedbackProductModel
-      .find({ userId: new Types.ObjectId(userId), isActive: true })
-      .populate({
-        path: 'purchaseOrderId',
-        select: 'status purchaseItems createdAt',
-      })
-      .populate('repliedBy', 'name email')
-      .sort({ createdAt: -1 })
-      .exec();
+    const rows = await this.prisma.feedbackProduct.findMany({
+      where: { userId, isActive: true },
+      include: FEEDBACK_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.populatedShape(r));
   }
 
-  async findByUserAndProduct(userId: string, productId: number) {
-    const orderIds = await this.purchaseOrderIdsContainingProductForUser(
-      userId,
-      productId,
-    );
-    return this.feedbackProductModel
-      .find({
-        userId: new Types.ObjectId(userId),
-        purchaseOrderId: { $in: orderIds },
+  async findByUserAndProduct(userId: string, productId: string) {
+    const rows = await this.prisma.feedbackProduct.findMany({
+      where: {
+        userId,
         isActive: true,
-      })
-      .populate({
-        path: 'purchaseOrderId',
-        select: 'status purchaseItems createdAt',
-      })
-      .sort({ createdAt: -1 })
-      .exec();
+        order: { purchaseItems: { some: { productId } } },
+      },
+      include: FEEDBACK_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.populatedShape(r));
   }
 
   async getAverageByProductId(
-    productId: number,
+    productId: string,
   ): Promise<{ average: number; count: number }> {
-    const variants = productIdMatchValues(productId);
-    const [stats] = await this.feedbackProductModel.aggregate([
-      {
-        $match: {
-          isActive: true,
-          score: { $exists: true, $ne: null },
-        },
+    const stats = await this.prisma.feedbackProduct.aggregate({
+      where: {
+        isActive: true,
+        score: { not: null },
+        order: { purchaseItems: { some: { productId } } },
       },
-      {
-        $lookup: {
-          from: this.purchaseOrderCollectionName,
-          localField: 'purchaseOrderId',
-          foreignField: '_id',
-          as: 'po',
-        },
-      },
-      { $unwind: '$po' },
-      {
-        $match: {
-          'po.purchaseItems': {
-            $elemMatch: { productId: { $in: variants } },
-          },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          average: { $avg: '$score' },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+      _avg: { score: true },
+      _count: { _all: true },
+    });
 
-    if (!stats) {
-      return { average: 0, count: 0 };
-    }
-
+    const avg = stats._avg.score ?? 0;
     return {
-      average: Math.round(stats.average * 10) / 10,
-      count: stats.count,
+      average: Math.round(avg * 10) / 10,
+      count: stats._count._all,
     };
   }
 
-  async reply(
-    feedbackId: string,
-    adminId: string,
-    dto: ReplyFeedbackProductDto,
-  ) {
-    const feedback = await this.feedbackProductModel
-      .findById(feedbackId)
-      .exec();
+  async reply(feedbackId: string, adminId: string, dto: ReplyFeedbackProductDto) {
+    const feedback = await this.prisma.feedbackProduct.findUnique({
+      where: { id: feedbackId },
+    });
 
     if (!feedback || !feedback.isActive) {
       throw new NotFoundException('Feedback not found');
@@ -366,75 +227,56 @@ export class FeedbackProductsService extends BaseService<FeedbackProductDocument
       throw new BadRequestException('This feedback has already been replied');
     }
 
-    feedback.adminReply = dto.content;
-    feedback.replyImages = dto.images ?? [];
-    feedback.repliedBy = new Types.ObjectId(adminId);
-    feedback.repliedAt = new Date();
-
-    return feedback.save();
+    return this.prisma.feedbackProduct.update({
+      where: { id: feedbackId },
+      data: {
+        adminReply: dto.content,
+        replyImages: dto.images ?? [],
+        repliedBy: adminId,
+        repliedAt: new Date(),
+      },
+    });
   }
 
   async removeFeedback(id: string, userId: string, role: Role) {
-    const feedback = await this.feedbackProductModel.findById(id).exec();
+    const feedback = await this.prisma.feedbackProduct.findUnique({
+      where: { id },
+    });
 
     if (!feedback || !feedback.isActive) {
       throw new NotFoundException('Feedback not found');
     }
 
-    const isOwner = feedback.userId.toString() === userId;
+    const isOwner = feedback.userId === userId;
     const isAdmin = role === Role.ADMIN;
 
     if (!isOwner && !isAdmin) {
       throw new BadRequestException('You can only delete your own feedback');
     }
 
-    const purchaseOrderId = feedback.purchaseOrderId;
-    feedback.isActive = false;
-    await feedback.save();
+    await this.prisma.feedbackProduct.update({
+      where: { id },
+      data: { isActive: false },
+    });
 
-    await this.syncRatingStatsForProductsInPurchaseOrder(purchaseOrderId);
+    await this.syncRatingStatsForProductsInPurchaseOrder(
+      feedback.purchaseOrderId,
+    );
 
     return { message: 'Feedback deleted successfully' };
-  }
-
-  private async purchaseOrderIdsContainingProduct(
-    productId: number,
-  ): Promise<Types.ObjectId[]> {
-    const variants = productIdMatchValues(productId);
-    const rows = await this.purchaseOrderModel
-      .find({
-        'purchaseItems.productId': { $in: variants },
-      } as QueryFilter<PurchaseOrderDocument>)
-      .select('_id')
-      .lean()
-      .exec();
-    return rows.map((r) => r._id);
-  }
-
-  private async purchaseOrderIdsContainingProductForUser(
-    userId: string,
-    productId: number,
-  ): Promise<Types.ObjectId[]> {
-    const variants = productIdMatchValues(productId);
-    const rows = await this.purchaseOrderModel
-      .find({
-        userId,
-        'purchaseItems.productId': { $in: variants },
-      } as QueryFilter<PurchaseOrderDocument>)
-      .select('_id')
-      .lean()
-      .exec();
-    return rows.map((r) => r._id);
   }
 
   private async assertUserOwnsDeliverablePurchaseOrder(
     userId: string,
     purchaseOrderId: string,
   ): Promise<void> {
-    const order = await this.purchaseOrderModel
-      .findById(purchaseOrderId)
-      .lean()
-      .exec();
+    if (!isUUID(purchaseOrderId)) {
+      throw new BadRequestException('Purchase order not found');
+    }
+
+    const order = await this.prisma.purchaseOrder.findUnique({
+      where: { id: purchaseOrderId },
+    });
 
     if (!order) {
       throw new BadRequestException('Purchase order not found');
@@ -459,78 +301,38 @@ export class FeedbackProductsService extends BaseService<FeedbackProductDocument
   }
 
   private async syncRatingStatsForProductsInPurchaseOrder(
-    purchaseOrderId: Types.ObjectId | string,
+    purchaseOrderId: string,
   ): Promise<void> {
-    const order = await this.purchaseOrderModel
-      .findById(purchaseOrderId)
-      .lean()
-      .exec();
-    if (!order?.purchaseItems?.length) {
-      return;
-    }
-
-    const productIds = new Set<number>();
-    for (const item of order.purchaseItems) {
-      const pid = Number((item as { productId?: unknown }).productId);
-      if (!Number.isNaN(pid)) {
-        productIds.add(pid);
-      }
-    }
+    const items = await this.prisma.purchaseItem.findMany({
+      where: { orderId: purchaseOrderId },
+      select: { productId: true },
+    });
+    const productIds = [...new Set(items.map((i) => i.productId))];
 
     await Promise.all(
-      [...productIds].map((id) => this.syncProductRatingStats(id)),
+      productIds.map((id) => this.syncProductRatingStats(id)),
     );
   }
 
-  private async syncProductRatingStats(productId: number): Promise<void> {
-    const variants = productIdMatchValues(productId);
-    const [stats] = await this.feedbackProductModel.aggregate([
-      {
-        $match: {
-          isActive: true,
-          score: { $exists: true, $ne: null },
-        },
+  private async syncProductRatingStats(productId: string): Promise<void> {
+    const stats = await this.prisma.feedbackProduct.aggregate({
+      where: {
+        isActive: true,
+        score: { not: null },
+        order: { purchaseItems: { some: { productId } } },
       },
-      {
-        $lookup: {
-          from: this.purchaseOrderCollectionName,
-          localField: 'purchaseOrderId',
-          foreignField: '_id',
-          as: 'po',
-        },
-      },
-      { $unwind: '$po' },
-      {
-        $match: {
-          'po.purchaseItems': {
-            $elemMatch: { productId: { $in: variants } },
-          },
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          average: { $avg: '$score' },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+      _avg: { score: true },
+      _count: { _all: true },
+    });
 
-    const averageRating = stats?.average
-      ? Math.round(stats.average * 10) / 10
+    const averageRating = stats._avg.score
+      ? Math.round(stats._avg.score * 10) / 10
       : 0;
-    const ratingCount = stats?.count ?? 0;
+    const ratingCount = stats._count._all ?? 0;
 
-    await this.productModel
-      .updateOne(
-        { _id: productId },
-        {
-          $set: {
-            averageRating,
-            ratingCount,
-          },
-        },
-      )
-      .exec();
+    await this.prisma.product.updateMany({
+      where: { id: productId },
+      data: { averageRating, ratingCount },
+    });
   }
 }

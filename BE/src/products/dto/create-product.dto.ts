@@ -1,14 +1,12 @@
 import {
-  IsMongoId,
   IsOptional,
   IsString,
   IsArray,
   ValidateNested,
-  IsNumber,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OptionValueDto } from './option-value.dto';
-import { Types } from 'mongoose';
 
 export class CreateProductDto {
   @IsString()
@@ -20,13 +18,13 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsArray()
-  @Type(() => Number)
-  categoryIds?: number[];
+  @IsUUID(undefined, { each: true })
+  categoryIds?: string[];
 
   @IsOptional()
   @IsArray()
-  @Type(() => Number)
-  tagIds?: number[];
+  @IsUUID(undefined, { each: true })
+  tagIds?: string[];
 
   @IsOptional()
   @IsArray()

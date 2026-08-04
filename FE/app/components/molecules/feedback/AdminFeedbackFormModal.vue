@@ -238,7 +238,7 @@ const submitForm = async () => {
     }
 
     emit("create", {
-      productId: Number(presetProduct.value?.id ?? form.productId),
+      productId: presetProduct.value?.id ?? form.productId,
       score: form.score,
       comment: form.comment.trim() || undefined,
       images,

@@ -6,7 +6,7 @@ const createProductRepository = ($api: typeof $fetch) => ({
   ...repositoryFactory.create<TExistedProduct>($api, "/products"),
   getBestSellingProducts: async () =>
     $api<TPaginateResponse<TExistedProduct>>("/products/best-selling"),
-  getRelatedProducts: async (productId: number) =>
+  getRelatedProducts: async (productId: string) =>
     $api<TExistedProduct[]>("/products/related", {
       params: { productId },
     }),
@@ -14,7 +14,7 @@ const createProductRepository = ($api: typeof $fetch) => ({
     $api<TPaginateResponse<TExistedProduct>>("/products/suggested", {
       params,
     }),
-  updateVirtualPurchaseCount: (productId: number, virtualPurchaseCount: number) =>
+  updateVirtualPurchaseCount: (productId: string, virtualPurchaseCount: number) =>
     $api<TExistedProduct>(`/products/${productId}/virtual-purchase-count`, {
       method: "PATCH",
       body: { virtualPurchaseCount },
