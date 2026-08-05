@@ -119,6 +119,8 @@ model Product {
   minPrice       Float    @default(0)
   maxPrice       Float    @default(0)
   purchaseCount  Int      @default(0)
+  // Số "đã bán ảo" cộng thêm khi hiển thị (giữ từ bản MongoDB cũ, FE cộng real + ảo)
+  virtualPurchaseCount Int @default(0)
   averageRating  Float    @default(0)
   ratingCount    Int      @default(0)
   isActive       Boolean  @default(true)
@@ -126,6 +128,8 @@ model Product {
   productOptions String[] @default([])
   imageUrls      String[] @default([])
   thumbnailUrls  String[] @default([])
+  // Khung ảnh áp cho các ảnh trong mô tả ở trang chi tiết (admin chọn khi đăng SP)
+  descriptionFrameId String? @db.Uuid
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -133,8 +137,14 @@ model Product {
   categories   ProductCategory[]
   tags         ProductTag[]
   purchaseItems PurchaseItem[]
+  directFeedbacks FeedbackProduct[]
+  similarProducts ProductSimilar[] @relation("ProductSimilarFrom")
+  similarOf       ProductSimilar[] @relation("ProductSimilarTo")
+  descriptionFrame ImageFrame? @relation(fields: [descriptionFrameId], references: [id], onDelete: SetNull)
 
   @@index([normalizedName])
+  @@index([isActive, purchaseCount])
+  @@index([minPrice])
   @@map("products")
 }
 
@@ -142,6 +152,7 @@ model Product {
 model OptionValue {
   id                 String   @id @default(uuid()) @db.Uuid
   productId          String?  @db.Uuid
+  code               String?  // Mã biến thể (SKU) do admin nhập
   imageUrl           String?
   price              Float
   originalPrice      Float?
@@ -169,6 +180,21 @@ model ProductCategory {
   @@id([productId, categoryId])
   @@index([categoryId])
   @@map("product_categories")
+}
+
+// Bảng nối tự tham chiếu: sản phẩm tương tự do admin chọn tay
+model ProductSimilar {
+  productId        String @db.Uuid
+  similarProductId String @db.Uuid
+  // Thứ tự admin chọn (hiển thị theo đúng thứ tự này)
+  position         Int    @default(0)
+
+  product        Product @relation("ProductSimilarFrom", fields: [productId], references: [id], onDelete: Cascade)
+  similarProduct Product @relation("ProductSimilarTo", fields: [similarProductId], references: [id], onDelete: Cascade)
+
+  @@id([productId, similarProductId])
+  @@index([similarProductId])
+  @@map("product_similars")
 }
 
 // Bảng nối N-N Product <-> Tag
@@ -230,8 +256,13 @@ model PurchaseItem {
 // ==== Đánh giá sản phẩm ====
 model FeedbackProduct {
   id              String    @id @default(uuid()) @db.Uuid
-  userId          String    @db.Uuid
-  purchaseOrderId String    @db.Uuid
+  // Nullable: feedback do admin tạo (migrate từ MongoDB cũ) không gắn user/đơn hàng
+  userId          String?   @db.Uuid
+  purchaseOrderId String?   @db.Uuid
+  // Feedback admin gắn thẳng vào sản phẩm; feedback từ đơn hàng suy ra qua purchaseItems
+  productId       String?   @db.Uuid
+  displayName     String?
+  isAdminCreated  Boolean   @default(false)
   comment         String?
   images          String[]  @default([])
   score           Int?
@@ -243,12 +274,14 @@ model FeedbackProduct {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  user     User          @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: Cascade)
-  order    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  replier  User?         @relation("FeedbackReplier", fields: [repliedBy], references: [id], onDelete: SetNull)
+  user     User?          @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  order    PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product  Product?       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  replier  User?          @relation("FeedbackReplier", fields: [repliedBy], references: [id], onDelete: SetNull)
 
   @@unique([userId, purchaseOrderId])
   @@index([purchaseOrderId, isActive, createdAt])
+  @@index([productId, isActive, createdAt])
   @@map("feedback_products")
 }
 
@@ -309,4 +342,23 @@ model ProductDailyReport {
   @@index([date])
   @@index([productId])
   @@map("product_daily_reports")
+}
+
+// ==== Khung ảnh mô tả sản phẩm ====
+model ImageFrame {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  imageUrl    String
+  insetTop    Float    @default(0)
+  insetRight  Float    @default(0)
+  insetBottom Float    @default(0)
+  insetLeft   Float    @default(0)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("image_frames")
 }

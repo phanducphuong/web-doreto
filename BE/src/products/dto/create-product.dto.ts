@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsOptional,
   IsString,
   IsArray,
@@ -26,6 +27,12 @@ export class CreateProductDto {
   @IsUUID(undefined, { each: true })
   tagIds?: string[];
 
+  // Sản phẩm tương tự do admin chọn tay (hiển thị ở trang chi tiết)
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  similarProductIds?: string[];
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -45,4 +52,14 @@ export class CreateProductDto {
   @IsArray()
   @IsString({ each: true })
   thumbnailUrls?: string[];
+
+  // Khung ảnh áp cho ảnh trong mô tả (null = bỏ khung)
+  @IsOptional()
+  @IsUUID()
+  descriptionFrameId?: string | null;
+
+  // Bật/tắt hiển thị trên shop (thiếu trường này thì whitelist strip im lặng)
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

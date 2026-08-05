@@ -136,13 +136,15 @@ export class AuthService {
         role: decoded.role,
       };
 
-      const user = await this.usersService.findOne(payload.sub);
+      const storedHash = await this.usersService.getRefreshTokenHash(
+        payload.sub,
+      );
 
-      if (!user || !user.refreshToken) {
+      if (!storedHash) {
         throw new UnauthorizedException();
       }
 
-      const isMatch = await bcrypt.compare(refreshToken, user.refreshToken);
+      const isMatch = await bcrypt.compare(refreshToken, storedHash);
 
       if (!isMatch) {
         throw new UnauthorizedException();

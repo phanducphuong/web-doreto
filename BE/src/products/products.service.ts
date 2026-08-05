@@ -36,7 +36,17 @@ const PRODUCT_INCLUDE = {
   optionValues: { orderBy: { createdAt: 'asc' as const } },
   categories: { include: { category: true } },
   tags: { include: { tag: true } },
+  similarProducts: {
+    select: { similarProductId: true },
+    orderBy: { position: 'asc' as const },
+  },
+  descriptionFrame: true,
 };
+
+// Số sản phẩm tương tự hiển thị ở trang chi tiết
+const RELATED_PRODUCTS_LIMIT = 6;
+// Kích thước nhóm "bán chạy" để bốc ngẫu nhiên khi admin không chọn đủ
+const BEST_SELLING_POOL_SIZE = 20;
 
 @Injectable()
 export class ProductsService {
@@ -51,7 +61,10 @@ export class ProductsService {
     const categories = (product.categories ?? []).map((pc: any) => pc.category);
     const tags = (product.tags ?? []).map((pt: any) => pt.tag);
     const optionValues = product.optionValues ?? [];
-    const { categories: _c, tags: _t, ...rest } = product;
+    const similarProductIds = (product.similarProducts ?? []).map(
+      (sp: any) => sp.similarProductId,
+    );
+    const { categories: _c, tags: _t, similarProducts: _s, ...rest } = product;
     return {
       ...rest,
       categories,
@@ -60,6 +73,7 @@ export class ProductsService {
       categoryIds: categories.map((c: any) => c.id),
       tagIds: tags.map((t: any) => t.id),
       optionValueIds: optionValues.map((o: any) => o.id),
+      similarProductIds,
     };
   }
 
@@ -82,6 +96,7 @@ export class ProductsService {
 
   private optionValueData(o: OptionValueDto) {
     return {
+      code: o.code ?? null,
       imageUrl: o.imageUrl,
       price: o.price,
       originalPrice: o.originalPrice,
@@ -103,8 +118,10 @@ export class ProductsService {
   }
 
   async create(createProductDto: CreateProductDto) {
-    const { optionValues, categoryIds, tagIds, ...productData } =
+    const { optionValues, categoryIds, tagIds, similarProductIds, ...productData } =
       createProductDto;
+
+    const uniqueSimilarIds = [...new Set(similarProductIds ?? [])];
 
     const options: OptionValueDto[] =
       optionValues && optionValues.length > 0
@@ -130,9 +147,20 @@ export class ProductsService {
         tags: tagIds?.length
           ? { create: tagIds.map((tagId) => ({ tagId })) }
           : undefined,
+        similarProducts: uniqueSimilarIds.length
+          ? {
+              create: uniqueSimilarIds.map((similarProductId, position) => ({
+                similarProductId,
+                position,
+              })),
+            }
+          : undefined,
         optionValues: {
           create: options.map((o) => this.optionValueData(o)),
         },
+        descriptionFrame: productData.descriptionFrameId
+          ? { connect: { id: productData.descriptionFrameId } }
+          : undefined,
       },
       include: PRODUCT_INCLUDE,
     });
@@ -142,6 +170,7 @@ export class ProductsService {
 
   async queryProduct(
     filterDto: FilterProductDto,
+    opts?: { includeInactive?: boolean },
   ): Promise<IPaginatedResponse<any>> {
     const {
       keyword,
@@ -156,6 +185,11 @@ export class ProductsService {
     } = filterDto;
 
     const AND: Prisma.ProductWhereInput[] = [];
+
+    // Shop công khai chỉ thấy sản phẩm đang bật; admin thấy tất cả
+    if (!opts?.includeInactive) {
+      AND.push({ isActive: true });
+    }
 
     if (keyword) {
       const normalized = normalizeText(keyword);
@@ -196,6 +230,33 @@ export class ProductsService {
     };
   }
 
+  /**
+   * Bán chạy cho trang chủ: xếp theo lượt mua THẬT + ẢO (đúng số "đã bán"
+   * đang hiển thị cho khách), chỉ lấy sản phẩm đang bật.
+   * Prisma không sort được theo tổng 2 cột nên lấy id bằng SQL thô trước.
+   */
+  async getBestSellingProducts(limit = 4): Promise<IPaginatedResponse<any>> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM products
+      WHERE "isActive" = true
+      ORDER BY ("purchaseCount" + "virtualPurchaseCount") DESC, "createdAt" DESC
+      LIMIT ${limit}`;
+    const ids = rows.map((r) => r.id);
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: PRODUCT_INCLUDE,
+    });
+    // findMany không giữ thứ tự của IN — sắp lại theo ids
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const data = ids
+      .map((id) => byId.get(id))
+      .filter(Boolean)
+      .map((p) => this.shape(p));
+
+    return { data, total: data.length, page: 1, count: limit };
+  }
+
   private buildOrderBy(
     sortBy?: string,
     sortOrder?: 'asc' | 'desc',
@@ -207,10 +268,11 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    const { optionValues, categoryIds, tagIds, ...productData } =
+    const { optionValues, categoryIds, tagIds, similarProductIds, ...productData } =
       updateProductDto;
 
-    const scalarData: Prisma.ProductUpdateInput = { ...productData };
+    // Unchecked input để nhận thẳng descriptionFrameId (uuid hoặc null = bỏ khung)
+    const scalarData: Prisma.ProductUncheckedUpdateInput = { ...productData };
     if (productData.name !== undefined) {
       scalarData.normalizedName = normalizeText(productData.name);
     }
@@ -242,18 +304,49 @@ export class ProductsService {
         }
       }
 
+      // Đồng bộ sản phẩm tương tự (bảng nối tự tham chiếu)
+      if (similarProductIds !== undefined) {
+        await tx.productSimilar.deleteMany({ where: { productId: id } });
+        const uniqueSimilarIds = [...new Set(similarProductIds)].filter(
+          (similarId) => similarId !== id,
+        );
+        if (uniqueSimilarIds.length) {
+          await tx.productSimilar.createMany({
+            data: uniqueSimilarIds.map((similarProductId, position) => ({
+              productId: id,
+              similarProductId,
+              position,
+            })),
+          });
+        }
+      }
+
       // Đồng bộ biến thể
       if (optionValues && optionValues.length > 0) {
         const keepIds = optionValues
           .filter((o) => o._id)
           .map((o) => o._id as string);
 
-        await tx.optionValue.deleteMany({
-          where: {
-            productId: id,
-            ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
-          },
-        });
+        try {
+          await tx.optionValue.deleteMany({
+            where: {
+              productId: id,
+              ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
+            },
+          });
+        } catch (err) {
+          // Biến thể đã nằm trong đơn hàng thì bị FK chặn xóa (P2003) —
+          // trả 409 rõ nghĩa thay vì 500 làm admin không sửa được sản phẩm
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === 'P2003'
+          ) {
+            throw new ConflictException(
+              'Không thể bỏ biến thể đã phát sinh trong đơn hàng. Hãy giữ lại biến thể cũ (có thể đặt tồn kho = 0 để ngừng bán).',
+            );
+          }
+          throw err;
+        }
 
         for (const o of optionValues) {
           const payload = this.optionValueData(o);
@@ -278,6 +371,25 @@ export class ProductsService {
     return this.findOne(id);
   }
 
+  /** Chỉ cập nhật lượt mua ảo (admin chỉnh tay để hiển thị trên web). */
+  async updateVirtualPurchaseCount(id: string, virtualPurchaseCount: number) {
+    try {
+      await this.prisma.product.update({
+        where: { id },
+        data: { virtualPurchaseCount },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2025'
+      ) {
+        throw new NotFoundException('Product not found');
+      }
+      throw err;
+    }
+    return this.findOne(id);
+  }
+
   async remove(id: string) {
     try {
       return await this.prisma.product.delete({ where: { id } });
@@ -294,61 +406,69 @@ export class ProductsService {
     }
   }
 
+  /**
+   * Sản phẩm tương tự ở trang chi tiết: ưu tiên danh sách admin đã chọn tay
+   * (đúng thứ tự chọn); nếu không chọn hoặc chọn thiếu thì bù ngẫu nhiên
+   * từ nhóm sản phẩm bán chạy. Luôn trả về tối đa RELATED_PRODUCTS_LIMIT.
+   */
   async getRelatedProducts(productId: string) {
-    const product = await this.findOne(productId);
-
-    const categoryIds: string[] = product.categoryIds ?? [];
-    const nameTokens = this.extractNameTokens(product.normalizedName);
-
-    const or: Prisma.ProductWhereInput[] = [];
-    if (categoryIds.length > 0) {
-      or.push({ categories: { some: { categoryId: { in: categoryIds } } } });
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        similarProducts: {
+          select: { similarProductId: true },
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
     }
-    if (nameTokens.length > 0) {
-      or.push({
-        OR: nameTokens.map((token) => ({
-          normalizedName: { contains: token, mode: 'insensitive' as const },
-        })),
+
+    const pickedIds = product.similarProducts.map((sp) => sp.similarProductId);
+
+    let picked: any[] = [];
+    if (pickedIds.length > 0) {
+      const rows = await this.prisma.product.findMany({
+        where: { id: { in: pickedIds }, isActive: true },
+        include: PRODUCT_INCLUDE,
       });
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      picked = pickedIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .slice(0, RELATED_PRODUCTS_LIMIT)
+        .map((raw) => this.shape(raw));
     }
 
-    if (or.length === 0) return [];
+    const missingCount = RELATED_PRODUCTS_LIMIT - picked.length;
+    if (missingCount <= 0) return picked;
 
-    const candidates = await this.prisma.product.findMany({
-      where: { id: { not: product.id }, isActive: true, OR: or },
+    // Bù phần thiếu: bốc ngẫu nhiên trong nhóm bán chạy nhất
+    const excludedIds = [productId, ...picked.map((p: any) => p.id)];
+    const bestSellingPool = await this.prisma.product.findMany({
+      where: { id: { notIn: excludedIds }, isActive: true },
+      orderBy: { purchaseCount: 'desc' },
+      take: BEST_SELLING_POOL_SIZE,
       include: PRODUCT_INCLUDE,
     });
 
-    return candidates
-      .map((raw) => this.shape(raw))
-      .map((relatedProduct) => {
-        const relatedCategoryIds = relatedProduct.categoryIds ?? [];
-        const sameCategoryScore = categoryIds.filter((id) =>
-          relatedCategoryIds.includes(id),
-        ).length;
-        const relatedNameTokens = this.extractNameTokens(
-          relatedProduct.normalizedName,
-        );
-        const similarNameScore = nameTokens.filter((token) =>
-          relatedNameTokens.includes(token),
-        ).length;
+    const fillers = this.shuffle(bestSellingPool)
+      .slice(0, missingCount)
+      .map((raw) => this.shape(raw));
 
-        return {
-          ...relatedProduct,
-          _relatedScore: { sameCategoryScore, similarNameScore },
-        };
-      })
-      .sort((a, b) => {
-        const categoryDiff =
-          b._relatedScore.sameCategoryScore - a._relatedScore.sameCategoryScore;
-        if (categoryDiff !== 0) return categoryDiff;
-        const nameDiff =
-          b._relatedScore.similarNameScore - a._relatedScore.similarNameScore;
-        if (nameDiff !== 0) return nameDiff;
-        return (b.purchaseCount ?? 0) - (a.purchaseCount ?? 0);
-      })
-      .slice(0, 8)
-      .map(({ _relatedScore, ...relatedProduct }) => relatedProduct);
+    return [...picked, ...fillers];
+  }
+
+  /** Xáo trộn ngẫu nhiên (Fisher–Yates), không đổi mảng gốc. */
+  private shuffle<T>(items: T[]): T[] {
+    const result = [...items];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
   }
 
   async getSuggestedProducts(
@@ -543,11 +663,6 @@ export class ProductsService {
         return b._keywordScore.purchaseCount - a._keywordScore.purchaseCount;
       })
       .map(({ _keywordScore, ...product }) => product);
-  }
-
-  private extractNameTokens(normalizedName: string | undefined): string[] {
-    if (!normalizedName) return [];
-    return [...new Set(normalizedName.split(/\s+/).filter((token) => token))];
   }
 
   // ==== AI viết mô tả sản phẩm (Gemini) — không đụng DB ====

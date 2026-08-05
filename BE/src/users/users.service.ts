@@ -24,9 +24,12 @@ const USER_INCLUDE = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private omitPassword<T extends { password?: string }>(user: T) {
+  // Bỏ mọi trường nhạy cảm khỏi response: password và cả hash refreshToken
+  private omitPassword<T extends { password?: string; refreshToken?: string | null }>(
+    user: T,
+  ) {
     if (!user) return user;
-    const { password: _pw, ...rest } = user;
+    const { password: _pw, refreshToken: _rt, ...rest } = user;
     return rest;
   }
 
@@ -55,6 +58,15 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     return this.omitPassword(user);
+  }
+
+  /** Chỉ dùng nội bộ cho luồng refresh token — không đưa vào response API. */
+  async getRefreshTokenHash(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { refreshToken: true },
+    });
+    return user?.refreshToken ?? null;
   }
 
   async updateProfile(userId: string, updateProfileDto: UpdateUserDto) {
@@ -86,7 +98,7 @@ export class UsersService {
       this.prisma.user.findMany({
         where,
         include: USER_INCLUDE,
-        omit: { password: true },
+        omit: { password: true, refreshToken: true },
         orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
         skip,
         take: limit,
@@ -269,17 +281,13 @@ export class UsersService {
     // Bỏ `addresses` khỏi payload — địa chỉ được quản lý qua các endpoint riêng.
     const { addresses: _addresses, ...rest } = updateUserDto;
 
-    try {
-      const user = await this.prisma.user.update({
-        where: { id },
-        data: rest as Prisma.UserUpdateInput,
-        include: USER_INCLUDE,
-        omit: { password: true },
-      });
-      return user;
-    } catch {
-      throw new NotFoundException('User not found');
-    }
+    // Lỗi Prisma (P2025 → 404) do PrismaExceptionFilter toàn cục ánh xạ
+    return this.prisma.user.update({
+      where: { id },
+      data: rest as Prisma.UserUpdateInput,
+      include: USER_INCLUDE,
+      omit: { password: true, refreshToken: true },
+    });
   }
 
   async findByEmail(email: string) {

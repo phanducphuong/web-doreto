@@ -12,12 +12,22 @@ import { JwtStrategy } from './jwt-strategy';
     UsersModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') ?? 'default_secret',
-        signOptions: {
-          expiresIn: (config.get<string>('JWT_EXPIRES') as any) || '1h',
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        const refreshSecret = config.get<string>('JWT_REFRESH_SECRET');
+        // Fail-fast khi thiếu secret (xem jwt-strategy.ts)
+        if (!secret || !refreshSecret) {
+          throw new Error(
+            'Thiếu biến môi trường JWT_SECRET / JWT_REFRESH_SECRET — không thể khởi động',
+          );
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: (config.get<string>('JWT_EXPIRES') as any) || '1h',
+          },
+        };
+      },
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
   ],

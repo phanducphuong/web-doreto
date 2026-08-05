@@ -8,9 +8,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 import { ReportingService } from './reporting.service';
 
+// Số liệu kinh doanh — chỉ admin được xem
 @UseGuards(JwtAuthGuard)
+@Roles(Role.ADMIN)
 @Controller('reporting')
 export class ReportingController {
   constructor(private readonly reportingService: ReportingService) {}

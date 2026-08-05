@@ -6,6 +6,8 @@ import {
 import { Prisma } from '@prisma/client';
 import { isUUID } from 'class-validator';
 import { CreateFeedbackProductDto } from './dto/create-feedback-product.dto';
+import { AdminCreateFeedbackProductDto } from './dto/admin-create-feedback-product.dto';
+import { AdminUpdateFeedbackProductDto } from './dto/admin-update-feedback-product.dto';
 import { Role } from 'src/common/enums/role.enum';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -24,7 +26,18 @@ const FEEDBACK_INCLUDE = {
   user: { select: USER_SELECT },
   order: { select: ORDER_SELECT },
   replier: { select: USER_SELECT },
+  product: { select: { id: true, name: true } },
 };
+
+/** Feedback thuộc về sản phẩm: gắn trực tiếp (admin tạo) hoặc qua đơn hàng chứa sản phẩm. */
+const belongsToProduct = (
+  productId: string,
+): Prisma.FeedbackProductWhereInput => ({
+  OR: [
+    { productId },
+    { order: { purchaseItems: { some: { productId } } } },
+  ],
+});
 
 @Injectable()
 export class FeedbackProductsService {
@@ -32,7 +45,7 @@ export class FeedbackProductsService {
 
   /** Giả lập populate kiểu Mongoose: gán object vào userId/purchaseOrderId/repliedBy. */
   private populatedShape(fb: any) {
-    const { user, order, replier, ...rest } = fb;
+    const { user, order, replier, product, ...rest } = fb;
     return {
       ...rest,
       userId: user ?? rest.userId,
@@ -43,12 +56,14 @@ export class FeedbackProductsService {
 
   /** Shape cho trang quản trị: dùng key user/purchaseOrder/repliedBy. */
   private managementShape(fb: any) {
-    const { user, order, replier, ...rest } = fb;
+    const { user, order, replier, product, ...rest } = fb;
     return {
       ...rest,
       user: user ?? undefined,
       purchaseOrder: order ?? undefined,
       repliedBy: replier ?? undefined,
+      // Sản phẩm của feedback admin tạo (FE hiển thị tên sản phẩm ở trang quản trị)
+      seededProduct: product ?? undefined,
     };
   }
 
@@ -132,12 +147,18 @@ export class FeedbackProductsService {
 
     if (reviewerKeyword?.trim()) {
       const kw = reviewerKeyword.trim();
-      where.user = {
+      // Tìm theo user thật hoặc displayName của feedback admin tạo
+      const reviewerFilter: Prisma.FeedbackProductWhereInput = {
         OR: [
-          { name: { contains: kw, mode: 'insensitive' } },
-          { email: { contains: kw, mode: 'insensitive' } },
+          { user: { name: { contains: kw, mode: 'insensitive' } } },
+          { user: { email: { contains: kw, mode: 'insensitive' } } },
+          { displayName: { contains: kw, mode: 'insensitive' } },
         ],
       };
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        reviewerFilter,
+      ];
     }
 
     const [rows, total] = await Promise.all([
@@ -164,7 +185,7 @@ export class FeedbackProductsService {
     const rows = await this.prisma.feedbackProduct.findMany({
       where: {
         isActive: true,
-        order: { purchaseItems: { some: { productId } } },
+        ...belongsToProduct(productId),
       },
       include: FEEDBACK_INCLUDE,
       orderBy: { createdAt: 'desc' },
@@ -194,6 +215,59 @@ export class FeedbackProductsService {
     return rows.map((r) => this.populatedShape(r));
   }
 
+  /** Admin tạo feedback gắn thẳng sản phẩm (migrate từ hệ cũ / tạo mới để marketing). */
+  async adminCreateFeedback(dto: AdminCreateFeedbackProductDto) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: dto.productId },
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const feedback = await this.prisma.feedbackProduct.create({
+      data: {
+        productId: dto.productId,
+        score: dto.score,
+        comment: dto.comment,
+        images: dto.images ?? [],
+        displayName: dto.displayName,
+        isAdminCreated: true,
+        isActive: true,
+      },
+    });
+
+    await this.syncProductRatingStats(dto.productId);
+    return feedback;
+  }
+
+  /** Admin sửa nội dung một feedback bất kỳ. */
+  async adminUpdateFeedback(
+    feedbackId: string,
+    dto: AdminUpdateFeedbackProductDto,
+  ) {
+    const feedback = await this.prisma.feedbackProduct.findUnique({
+      where: { id: feedbackId },
+    });
+    if (!feedback || !feedback.isActive) {
+      throw new NotFoundException('Feedback not found');
+    }
+
+    const updated = await this.prisma.feedbackProduct.update({
+      where: { id: feedbackId },
+      data: {
+        ...(dto.score !== undefined ? { score: dto.score } : {}),
+        ...(dto.comment !== undefined ? { comment: dto.comment } : {}),
+        ...(dto.images !== undefined ? { images: dto.images } : {}),
+        ...(dto.displayName !== undefined
+          ? { displayName: dto.displayName }
+          : {}),
+      },
+    });
+
+    await this.syncRatingStatsForFeedback(updated);
+    return updated;
+  }
+
   async getAverageByProductId(
     productId: string,
   ): Promise<{ average: number; count: number }> {
@@ -201,7 +275,7 @@ export class FeedbackProductsService {
       where: {
         isActive: true,
         score: { not: null },
-        order: { purchaseItems: { some: { productId } } },
+        ...belongsToProduct(productId),
       },
       _avg: { score: true },
       _count: { _all: true },
@@ -247,7 +321,7 @@ export class FeedbackProductsService {
       throw new NotFoundException('Feedback not found');
     }
 
-    const isOwner = feedback.userId === userId;
+    const isOwner = feedback.userId !== null && feedback.userId === userId;
     const isAdmin = role === Role.ADMIN;
 
     if (!isOwner && !isAdmin) {
@@ -259,11 +333,24 @@ export class FeedbackProductsService {
       data: { isActive: false },
     });
 
-    await this.syncRatingStatsForProductsInPurchaseOrder(
-      feedback.purchaseOrderId,
-    );
+    await this.syncRatingStatsForFeedback(feedback);
 
     return { message: 'Feedback deleted successfully' };
+  }
+
+  /** Đồng bộ lại điểm trung bình cho (các) sản phẩm mà feedback này thuộc về. */
+  private async syncRatingStatsForFeedback(feedback: {
+    productId: string | null;
+    purchaseOrderId: string | null;
+  }): Promise<void> {
+    if (feedback.productId) {
+      await this.syncProductRatingStats(feedback.productId);
+    }
+    if (feedback.purchaseOrderId) {
+      await this.syncRatingStatsForProductsInPurchaseOrder(
+        feedback.purchaseOrderId,
+      );
+    }
   }
 
   private async assertUserOwnsDeliverablePurchaseOrder(
@@ -319,7 +406,7 @@ export class FeedbackProductsService {
       where: {
         isActive: true,
         score: { not: null },
-        order: { purchaseItems: { some: { productId } } },
+        ...belongsToProduct(productId),
       },
       _avg: { score: true },
       _count: { _all: true },

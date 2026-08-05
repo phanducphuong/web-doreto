@@ -16,6 +16,13 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
+/** Chặn file quá khổ ngay ở multer (Cloud Run cũng chỉ nhận request ≤ 32MB). */
+const UPLOAD_MAX_FILES = 20;
+const UPLOAD_MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+// Ảnh: cần đăng nhập (khách viết đánh giá có ảnh + admin);
+// video mô tả sản phẩm: chỉ admin dùng
+@UseGuards(JwtAuthGuard)
 @Controller('uploads')
 export class UploadsController {
   constructor(
@@ -24,7 +31,11 @@ export class UploadsController {
   ) {}
 
   @Post('files')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(
+    FilesInterceptor('files', UPLOAD_MAX_FILES, {
+      limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+    }),
+  )
   async uploadFile(@UploadedFiles() files: File[]) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No files provided');
@@ -89,8 +100,6 @@ export class UploadsController {
     };
   }
 
-  // Video mô tả sản phẩm: chỉ admin. Upload thẳng lên R2 qua presigned URL.
-  @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
   @Post('videos/presign')
   async presignVideo(@Body() body: Record<string, unknown>) {
@@ -98,7 +107,6 @@ export class UploadsController {
     return { success: true, data };
   }
 
-  @UseGuards(JwtAuthGuard)
   @Roles(Role.ADMIN)
   @Post('videos/complete')
   async completeVideo(@Body() body: Record<string, unknown>) {

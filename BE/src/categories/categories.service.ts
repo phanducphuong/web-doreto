@@ -50,22 +50,16 @@ export class CategoriesService {
       await this.checkDuplicateName(updateCategoryDto.name, id);
     }
 
-    try {
-      return await this.prisma.category.update({
-        where: { id },
-        data: { ...updateCategoryDto },
-      });
-    } catch {
-      throw new NotFoundException('Not found');
-    }
+    // Lỗi Prisma do PrismaExceptionFilter toàn cục ánh xạ (P2025/P2023 → 404,
+    // P2003 → 409) — không catch trần để khỏi nuốt lỗi thật
+    return this.prisma.category.update({
+      where: { id },
+      data: { ...updateCategoryDto },
+    });
   }
 
   async remove(id: string) {
-    try {
-      return await this.prisma.category.delete({ where: { id } });
-    } catch {
-      throw new NotFoundException('Not found');
-    }
+    return this.prisma.category.delete({ where: { id } });
   }
 
   async getTopCategories() {

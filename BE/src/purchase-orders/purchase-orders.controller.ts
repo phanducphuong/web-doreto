@@ -16,10 +16,12 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { Role } from 'src/common/enums/role.enum';
+import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
+import type { AuthUser } from 'src/@types/auth.types';
 
 @UseGuards(JwtAuthGuard)
 @Controller('purchase-orders')
@@ -30,14 +32,15 @@ export class PurchaseOrdersController {
   @Public()
   create(
     @Body() createPurchaseOrderDto: CreatePurchaseOrderDto,
-    @CurrentUser('role') role: Role,
+    @CurrentUser() user: AuthUser | null,
   ) {
     return this.purchaseOrdersService.createPurchaseOrder(
       createPurchaseOrderDto,
-      role,
+      user,
     );
   }
 
+  @Roles(Role.ADMIN)
   @Get()
   findAll(
     @Query('page', ParseIntPipe) page: number = 1,
@@ -76,21 +79,24 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.purchaseOrdersService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.purchaseOrdersService.findOne(id, user);
   }
 
   @Patch(':id')
   update(
     @Param('id') id: string,
     @Body() updatePurchaseOrderDto: UpdatePurchaseOrderDto,
+    @CurrentUser() user: AuthUser,
   ) {
     return this.purchaseOrdersService.updatePurchaseOrder(
       id,
       updatePurchaseOrderDto,
+      user,
     );
   }
 
+  @Roles(Role.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.purchaseOrdersService.remove(id);

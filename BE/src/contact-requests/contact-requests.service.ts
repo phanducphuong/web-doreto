@@ -82,16 +82,13 @@ export class ContactRequestsService {
       throw new NotFoundException('Không tìm thấy yêu cầu liên hệ');
     }
 
-    try {
-      return await this.prisma.contactRequest.update({
-        where: { id },
-        data: done
-          ? { done: true, doneAt: new Date() }
-          : { done: false, doneAt: null },
-      });
-    } catch {
-      throw new NotFoundException('Không tìm thấy yêu cầu liên hệ');
-    }
+    // Lỗi Prisma (P2025 → 404) do PrismaExceptionFilter toàn cục ánh xạ
+    return this.prisma.contactRequest.update({
+      where: { id },
+      data: done
+        ? { done: true, doneAt: new Date() }
+        : { done: false, doneAt: null },
+    });
   }
 
   async findSpamBlocklist(page: number = 1, limit: number = 50) {

@@ -18,6 +18,8 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ReplyFeedbackProductDto } from './dto/reply-feedback-product.dto';
 import { QueryFeedbackManagementDto } from './dto/query-feedback-management.dto';
+import { AdminCreateFeedbackProductDto } from './dto/admin-create-feedback-product.dto';
+import { AdminUpdateFeedbackProductDto } from './dto/admin-update-feedback-product.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('feedback-products')
@@ -49,6 +51,21 @@ export class FeedbackProductsController {
     return this.feedbackProductsService.findForManagement(query);
   }
 
+  @Roles(Role.ADMIN)
+  @Post('admin')
+  adminCreate(@Body() dto: AdminCreateFeedbackProductDto) {
+    return this.feedbackProductsService.adminCreateFeedback(dto);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id')
+  adminUpdate(
+    @Param('id') id: string,
+    @Body() dto: AdminUpdateFeedbackProductDto,
+  ) {
+    return this.feedbackProductsService.adminUpdateFeedback(id, dto);
+  }
+
   @Public()
   @Get('product/:productId')
   findByProductId(@Param('productId') productId: string) {
@@ -69,6 +86,7 @@ export class FeedbackProductsController {
     return this.feedbackProductsService.findByUserAndProduct(userId, productId);
   }
 
+  @Roles(Role.ADMIN)
   @Get('user/:userId')
   findByUserId(@Param('userId') userId: string) {
     return this.feedbackProductsService.findByUserId(userId);

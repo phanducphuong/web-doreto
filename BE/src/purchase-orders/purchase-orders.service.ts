@@ -1,12 +1,15 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus as PrismaStatus } from '@prisma/client';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 import { Role } from 'src/common/enums/role.enum';
+import { AuthUser } from 'src/@types/auth.types';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ReportingService } from 'src/reporting/reporting.service';
@@ -31,10 +34,21 @@ const ORDER_INCLUDE = {
 
 @Injectable()
 export class PurchaseOrdersService {
+  private readonly logger = new Logger(PurchaseOrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly reportingService: ReportingService,
   ) {}
+
+  /** Đơn đã ghi thành công thì lỗi đồng bộ báo cáo không được làm fail request. */
+  private async syncReportSafe(date: Date) {
+    try {
+      await this.reportingService.syncByOrderDate(date);
+    } catch (error) {
+      this.logger.error('Đồng bộ báo cáo theo ngày thất bại', error);
+    }
+  }
 
   /** Bổ sung purchasePriceDetail và nonLoginUser để giữ đúng shape API cũ. */
   private shape(order: any) {
@@ -54,68 +68,146 @@ export class PurchaseOrdersService {
 
   async createPurchaseOrder(
     createPurchaseOrderDto: CreatePurchaseOrderDto,
-    role: Role,
+    caller: AuthUser | null,
   ) {
+    const role = caller?.role;
+    const status = (createPurchaseOrderDto.status ??
+      PurchaseOrderStatus.PENDING) as PurchaseOrderStatus;
+
     if (
       role !== Role.ADMIN &&
-      ![PurchaseOrderStatus.CART, PurchaseOrderStatus.PENDING].includes(
-        createPurchaseOrderDto.status ?? PurchaseOrderStatus.CART,
-      )
+      ![PurchaseOrderStatus.CART, PurchaseOrderStatus.PENDING].includes(status)
     ) {
       throw new ForbiddenException(
         'You are not allowed to create a purchase order',
       );
     }
 
+    // Không tin userId từ body: user thường luôn gắn đơn vào chính mình,
+    // khách vãng lai gắn null; chỉ admin được chỉ định userId tùy ý.
+    const userId =
+      role === Role.ADMIN
+        ? createPurchaseOrderDto.userId || null
+        : (caller?.userId ?? null);
+
     const items = await this.buildPurchaseItemSnapshots(
       createPurchaseOrderDto.purchaseItems,
     );
     const summaryPrice = this.calcSummaryPrice(items);
 
-    const order = await this.prisma.purchaseOrder.create({
-      data: {
-        userId: createPurchaseOrderDto.userId || null,
-        status: (createPurchaseOrderDto.status ??
-          PurchaseOrderStatus.PENDING) as PrismaStatus,
-        summaryPrice,
-        nonLoginUserEmail: createPurchaseOrderDto.nonLoginUser?.email,
-        address: createPurchaseOrderDto.address
-          ? this.toJson(createPurchaseOrderDto.address)
-          : undefined,
-        purchaseItems: { create: items.map((i) => this.itemCreateData(i)) },
-      },
-      include: ORDER_INCLUDE,
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.purchaseOrder.create({
+        data: {
+          userId,
+          status: status as PrismaStatus,
+          summaryPrice,
+          nonLoginUserEmail: createPurchaseOrderDto.nonLoginUser?.email,
+          address: createPurchaseOrderDto.address
+            ? this.toJson(createPurchaseOrderDto.address)
+            : undefined,
+          purchaseItems: { create: items.map((i) => this.itemCreateData(i)) },
+        },
+        include: ORDER_INCLUDE,
+      });
+
+      // Đơn tạo thẳng ở trạng thái đã đặt (vd "mua ngay" POST pending)
+      // phải trừ kho ngay như đơn checkout từ giỏ
+      if (
+        status !== PurchaseOrderStatus.CART &&
+        status !== PurchaseOrderStatus.CANCELLED
+      ) {
+        await this.applyInventoryDelta(
+          tx,
+          items.map((i) => ({
+            productId: i.productId,
+            productOptionValueId: i.productOptionValueId,
+            count: i.count,
+          })),
+          -1,
+        );
+      }
+
+      return created;
     });
 
-    await this.reportingService.syncByOrderDate(order.createdAt);
+    await this.syncReportSafe(order.createdAt);
     return this.shape(order);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, caller: AuthUser) {
     const order = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: ORDER_INCLUDE,
     });
-    if (!order) {
+    // Trả 404 (không phải 403) khi đơn của người khác để không lộ id đơn tồn tại
+    if (
+      !order ||
+      (caller.role !== Role.ADMIN && order.userId !== caller.userId)
+    ) {
       throw new NotFoundException('Purchase order not found');
     }
     return this.shape(order);
   }
 
-  async updatePurchaseOrder(id: string, dto: UpdatePurchaseOrderDto) {
-    const updatedOrder = await this.upsertPurchaseOrder(id, dto);
-    await this.reportingService.syncByOrderDate(updatedOrder.createdAt);
+  async updatePurchaseOrder(
+    id: string,
+    dto: UpdatePurchaseOrderDto,
+    caller: AuthUser,
+  ) {
+    const updatedOrder = await this.updateExistingOrder(id, dto, caller);
+    await this.syncReportSafe(updatedOrder.createdAt);
     return this.shape(updatedOrder);
   }
 
-  private async upsertPurchaseOrder(id: string, dto: UpdatePurchaseOrderDto) {
+  /** User thường chỉ được: sửa giỏ của mình (CART→CART/PENDING) hoặc tự hủy đơn PENDING. */
+  private assertCustomerCanUpdate(
+    prevStatus: PurchaseOrderStatus | undefined,
+    dto: UpdatePurchaseOrderDto,
+  ) {
+    if (prevStatus === PurchaseOrderStatus.CART) {
+      const next = (dto.status ?? PurchaseOrderStatus.CART) as PurchaseOrderStatus;
+      if (
+        ![PurchaseOrderStatus.CART, PurchaseOrderStatus.PENDING].includes(next)
+      ) {
+        throw new ForbiddenException('Trạng thái đơn hàng không hợp lệ');
+      }
+      return;
+    }
+    if (
+      prevStatus === PurchaseOrderStatus.PENDING &&
+      dto.status === PurchaseOrderStatus.CANCELLED &&
+      !dto.purchaseItems
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Bạn không có quyền sửa đơn hàng này');
+  }
+
+  private async updateExistingOrder(
+    id: string,
+    dto: UpdatePurchaseOrderDto,
+    caller: AuthUser,
+  ) {
     const existing = await this.prisma.purchaseOrder.findUnique({
       where: { id },
       include: { purchaseItems: true },
     });
 
-    const prevStatus = this.toStatus(existing?.status);
-    const nextStatus = this.toStatus(dto.status ?? existing?.status);
+    // Không còn upsert: PATCH id lạ (vd cart id Mongo cũ trong localStorage) trả 404
+    // để FE tạo giỏ mới bằng POST, thay vì cho client tự đặt khóa chính
+    if (!existing) {
+      throw new NotFoundException('Purchase order not found');
+    }
+
+    if (caller.role !== Role.ADMIN) {
+      if (existing.userId !== caller.userId) {
+        throw new NotFoundException('Purchase order not found');
+      }
+      this.assertCustomerCanUpdate(this.toStatus(existing.status), dto);
+    }
+
+    const prevStatus = this.toStatus(existing.status);
+    const nextStatus = this.toStatus(dto.status ?? existing.status);
 
     const data: Prisma.PurchaseOrderUpdateInput = {};
     if (dto.status !== undefined) data.status = dto.status as PrismaStatus;
@@ -136,7 +228,7 @@ export class PurchaseOrdersService {
       data.summaryPrice = this.calcSummaryPrice(builtItems);
     }
 
-    const prevItems = this.toSnapshotItems(existing?.purchaseItems);
+    const prevItems = this.toSnapshotItems(existing.purchaseItems);
     const nextItems = builtItems
       ? builtItems.map((i) => ({
           productId: i.productId,
@@ -146,44 +238,23 @@ export class PurchaseOrdersService {
       : prevItems;
 
     const order = await this.prisma.$transaction(async (tx) => {
-      let saved;
-      if (existing) {
-        if (builtItems) {
-          await tx.purchaseItem.deleteMany({ where: { orderId: id } });
-        }
-        saved = await tx.purchaseOrder.update({
-          where: { id },
-          data: {
-            ...data,
-            ...(builtItems
-              ? {
-                  purchaseItems: {
-                    create: builtItems.map((i) => this.itemCreateData(i)),
-                  },
-                }
-              : {}),
-          },
-          include: ORDER_INCLUDE,
-        });
-      } else {
-        saved = await tx.purchaseOrder.create({
-          data: {
-            id,
-            status: (dto.status ?? PurchaseOrderStatus.CART) as PrismaStatus,
-            summaryPrice: builtItems ? this.calcSummaryPrice(builtItems) : 0,
-            nonLoginUserEmail: dto.nonLoginUser?.email,
-            address: dto.address ? this.toJson(dto.address) : undefined,
-            ...(builtItems
-              ? {
-                  purchaseItems: {
-                    create: builtItems.map((i) => this.itemCreateData(i)),
-                  },
-                }
-              : {}),
-          },
-          include: ORDER_INCLUDE,
-        });
+      if (builtItems) {
+        await tx.purchaseItem.deleteMany({ where: { orderId: id } });
       }
+      const saved = await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          ...data,
+          ...(builtItems
+            ? {
+                purchaseItems: {
+                  create: builtItems.map((i) => this.itemCreateData(i)),
+                },
+              }
+            : {}),
+        },
+        include: ORDER_INCLUDE,
+      });
 
       await this.handleInventoryOnStatusTransition(
         tx,
@@ -200,12 +271,24 @@ export class PurchaseOrdersService {
   }
 
   async remove(id: string) {
-    const order = await this.prisma.purchaseOrder
-      .delete({ where: { id }, include: ORDER_INCLUDE })
-      .catch(() => {
-        throw new NotFoundException('Purchase order not found');
+    let order;
+    try {
+      order = await this.prisma.purchaseOrder.delete({
+        where: { id },
+        include: ORDER_INCLUDE,
       });
-    await this.reportingService.syncByOrderDate(order.createdAt);
+    } catch (error) {
+      // Chỉ coi "không tồn tại" (P2025) / "id không phải uuid" (P2023) là 404,
+      // lỗi khác (mất kết nối DB, FK...) phải ném ra thật
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        ['P2025', 'P2023'].includes(error.code)
+      ) {
+        throw new NotFoundException('Purchase order not found');
+      }
+      throw error;
+    }
+    await this.syncReportSafe(order.createdAt);
     return this.shape(order);
   }
 
@@ -365,13 +448,29 @@ export class PurchaseOrdersService {
     stockDirection: 1 | -1,
   ) {
     for (const item of items) {
-      await tx.optionValue.updateMany({
-        where: { id: item.productOptionValueId },
+      // Khi trừ kho: điều kiện stock >= count chạy nguyên tử trong DB,
+      // 2 khách checkout cùng lúc món cuối cùng thì chỉ 1 người thành công
+      const optionWhere: Prisma.OptionValueWhereInput =
+        stockDirection === -1
+          ? { id: item.productOptionValueId, stock: { gte: item.count } }
+          : { id: item.productOptionValueId };
+
+      const updated = await tx.optionValue.updateMany({
+        where: optionWhere,
         data: {
           stock: { increment: stockDirection * item.count },
           purchaseCount: { increment: -stockDirection * item.count },
         },
       });
+
+      if (stockDirection === -1 && updated.count === 0) {
+        throw new ConflictException(
+          'Sản phẩm không đủ hàng trong kho, vui lòng giảm số lượng hoặc chọn sản phẩm khác',
+        );
+      }
+
+      // stock của Product là số gộp các biến thể — không gắn điều kiện gte
+      // để tránh chặn nhầm khi số gộp lệch tạm thời với tổng biến thể
       await tx.product.updateMany({
         where: { id: item.productId },
         data: {

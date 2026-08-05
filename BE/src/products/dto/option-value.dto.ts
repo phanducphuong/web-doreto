@@ -14,6 +14,10 @@ export class OptionValueDto {
 
   @IsOptional()
   @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsString()
   imageUrl?: string;
 
   @IsNumber()

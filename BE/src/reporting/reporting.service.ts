@@ -399,13 +399,23 @@ export class ReportingService {
     return (numerator / denominator) * 100;
   }
 
+  // Mốc "ngày" của báo cáo tính theo giờ Việt Nam (UTC+7), DB lưu UTC.
+  // Trước đây dùng UTC thẳng: đơn đặt 5h sáng VN bị dồn về ngày hôm trước.
+  private static readonly VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
   private toDateString(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    return new Date(date.getTime() + ReportingService.VN_OFFSET_MS)
+      .toISOString()
+      .slice(0, 10);
   }
 
   private buildDateRange(dateString: string) {
-    const start = new Date(`${dateString}T00:00:00.000Z`);
-    const end = new Date(`${dateString}T23:59:59.999Z`);
+    // 00:00 giờ VN = 17:00 UTC ngày hôm trước
+    const start = new Date(
+      new Date(`${dateString}T00:00:00.000Z`).getTime() -
+        ReportingService.VN_OFFSET_MS,
+    );
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
     return { start, end };
   }
 }

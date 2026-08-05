@@ -16,6 +16,7 @@ import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { FeedbackProductsModule } from './feedback-products/feedback-products.module';
 import { ContactRequestsModule } from './contact-requests/contact-requests.module';
 import { TagsModule } from './tags/tags.module';
+import { ImageFramesModule } from './image-frames/image-frames.module';
 import { ReportingModule } from './reporting/reporting.module';
 
 @Module({
@@ -39,6 +40,7 @@ import { ReportingModule } from './reporting/reporting.module';
     FeedbackProductsModule,
     ContactRequestsModule,
     TagsModule,
+    ImageFramesModule,
     ReportingModule,
   ],
   providers: [

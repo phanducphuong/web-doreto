@@ -43,25 +43,19 @@ export class TagsService {
     return tag;
   }
 
+  // Lỗi Prisma (P2025 không tồn tại, P2023 id sai...) do PrismaExceptionFilter
+  // toàn cục ánh xạ — không catch trần ở đây để khỏi nuốt lỗi thật (mất kết nối DB...)
   async update(id: string, dto: UpdateTagDto) {
     if (dto.name) {
       await this.checkDuplicateName(dto.name, id);
     }
-    try {
-      return await this.prisma.tag.update({
-        where: { id },
-        data: { ...dto },
-      });
-    } catch {
-      throw new NotFoundException('Not found');
-    }
+    return this.prisma.tag.update({
+      where: { id },
+      data: { ...dto },
+    });
   }
 
   async remove(id: string) {
-    try {
-      return await this.prisma.tag.delete({ where: { id } });
-    } catch {
-      throw new NotFoundException('Not found');
-    }
+    return this.prisma.tag.delete({ where: { id } });
   }
 }

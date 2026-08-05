@@ -15,10 +15,12 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { FilterProductDto } from './dto/filter-product.dto';
 import { RelatedProductsDto } from './dto/related-products.dto';
 import { GenerateProductDescriptionDto } from './dto/generate-product-description.dto';
+import { UpdateVirtualPurchaseCountDto } from './dto/update-virtual-purchase-count.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('products')
@@ -43,19 +45,20 @@ export class ProductsController {
 
   @Public()
   @Get()
-  query(@Query() filterDto: FilterProductDto) {
-    return this.productsService.queryProduct(filterDto);
+  query(
+    @Query() filterDto: FilterProductDto,
+    @CurrentUser('role') role: Role | null,
+  ) {
+    // Admin (trang quản trị) thấy cả sản phẩm đã tắt; khách chỉ thấy đang bật
+    return this.productsService.queryProduct(filterDto, {
+      includeInactive: role === Role.ADMIN,
+    });
   }
 
   @Public()
   @Get('best-selling')
   getBestSellingProducts() {
-    return this.productsService.queryProduct({
-      page: 1,
-      limit: 4,
-      sortBy: 'purchaseCount',
-      sortOrder: 'desc',
-    });
+    return this.productsService.getBestSellingProducts(4);
   }
 
   @Public()
@@ -94,6 +97,18 @@ export class ProductsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id/virtual-purchase-count')
+  updateVirtualPurchaseCount(
+    @Param('id') id: string,
+    @Body() dto: UpdateVirtualPurchaseCountDto,
+  ) {
+    return this.productsService.updateVirtualPurchaseCount(
+      id,
+      dto.virtualPurchaseCount,
+    );
   }
 
   @Roles(Role.ADMIN)
