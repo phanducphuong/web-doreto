@@ -1,18 +1,27 @@
 import {
   Controller,
   Post,
+  UseGuards,
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Body,
   Query,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { File } from 'multer';
 import { UploadsService } from './uploads.service';
+import { VideosService } from './videos.service';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { Role } from 'src/common/enums/role.enum';
 
 @Controller('uploads')
 export class UploadsController {
-  constructor(private readonly uploadsService: UploadsService) {}
+  constructor(
+    private readonly uploadsService: UploadsService,
+    private readonly videosService: VideosService,
+  ) {}
 
   @Post('files')
   @UseInterceptors(FilesInterceptor('files'))
@@ -78,5 +87,22 @@ export class UploadsController {
       count: uploadedFiles.length,
       files: uploadedFiles,
     };
+  }
+
+  // Video mô tả sản phẩm: chỉ admin. Upload thẳng lên R2 qua presigned URL.
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  @Post('videos/presign')
+  async presignVideo(@Body() body: Record<string, unknown>) {
+    const data = await this.videosService.presign(body ?? {});
+    return { success: true, data };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Roles(Role.ADMIN)
+  @Post('videos/complete')
+  async completeVideo(@Body() body: Record<string, unknown>) {
+    const data = await this.videosService.complete(body ?? {});
+    return { success: true, data };
   }
 }
