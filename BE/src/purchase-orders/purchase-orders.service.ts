@@ -14,6 +14,9 @@ import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ReportingService } from 'src/reporting/reporting.service';
 import { PurchaseItemDto } from './dto/purchase-item.dto';
+import { CrmLeadOutboxService } from 'src/crm-lead-outbox/crm-lead-outbox.service';
+import { CrmLeadOutboxWorker } from 'src/crm-lead-outbox/crm-lead-outbox.worker';
+import { buildOrderLeadPayload } from 'src/crm-lead-outbox/decor-lead-payload';
 
 type SnapshotItem = {
   productId: string;
@@ -39,7 +42,26 @@ export class PurchaseOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reportingService: ReportingService,
+    // Outbox lead decor→CRM (plan 38-03): enqueue in-tx + bắn gần-tức-thì sau commit
+    private readonly outbox: CrmLeadOutboxService,
+    private readonly worker: CrmLeadOutboxWorker,
   ) {}
+
+  /**
+   * Bắn flush outbox gần-tức-thì sau commit — FAIL-SAFE tuyệt đối: dù worker
+   * (hoặc CRM) lỗi cũng KHÔNG được làm fail request đặt hàng. Worker nền ~30s
+   * vẫn gửi lại. Non-blocking (không await).
+   */
+  private triggerFlushSafe() {
+    try {
+      this.worker.triggerFlushSoon();
+    } catch (error) {
+      this.logger.error(
+        'triggerFlushSoon lỗi (bỏ qua, worker nền sẽ gửi lại)',
+        error as Error,
+      );
+    }
+  }
 
   /** Đơn đã ghi thành công thì lỗi đồng bộ báo cáo không được làm fail request. */
   private async syncReportSafe(date: Date) {
@@ -95,6 +117,11 @@ export class PurchaseOrdersService {
     );
     const summaryPrice = this.calcSummaryPrice(items);
 
+    // Đơn thật (không phải giỏ, không phải hủy) = một chuyển đổi → enqueue lead CRM
+    const isConversion =
+      status !== PurchaseOrderStatus.CART &&
+      status !== PurchaseOrderStatus.CANCELLED;
+
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.purchaseOrder.create({
         data: {
@@ -105,6 +132,12 @@ export class PurchaseOrdersService {
           address: createPurchaseOrderDto.address
             ? this.toJson(createPurchaseOrderDto.address)
             : undefined,
+          // Attribution nguyên văn (D-03/D-06); thiếu = undefined = cột null (D-07)
+          visitorId: createPurchaseOrderDto.visitorId,
+          camp: createPurchaseOrderDto.camp,
+          utm: createPurchaseOrderDto.utm
+            ? this.toJson(createPurchaseOrderDto.utm)
+            : undefined,
           purchaseItems: { create: items.map((i) => this.itemCreateData(i)) },
         },
         include: ORDER_INCLUDE,
@@ -112,10 +145,7 @@ export class PurchaseOrdersService {
 
       // Đơn tạo thẳng ở trạng thái đã đặt (vd "mua ngay" POST pending)
       // phải trừ kho ngay như đơn checkout từ giỏ
-      if (
-        status !== PurchaseOrderStatus.CART &&
-        status !== PurchaseOrderStatus.CANCELLED
-      ) {
+      if (isConversion) {
         await this.applyInventoryDelta(
           tx,
           items.map((i) => ({
@@ -125,10 +155,23 @@ export class PurchaseOrdersService {
           })),
           -1,
         );
+
+        // Enqueue lead CÙNG tx (at-least-once): đơn commit thì lead chắc chắn đã
+        // xếp hàng. sourceId = order.id → UNIQUE(sourceKind,sourceId) chống double
+        // enqueue nếu về sau PATCH lại (D-08). KHÔNG gọi CRM ở đây, không await webhook.
+        await this.outbox.enqueue(tx, {
+          sourceKind: 'order',
+          sourceId: created.id,
+          payload: buildOrderLeadPayload(created),
+        });
       }
 
       return created;
     });
+
+    // Bắn gần-tức-thì SAU commit (D-04) — non-blocking, đã nuốt lỗi trong worker.
+    // Lỗi gửi webhook KHÔNG bao giờ chặn/làm chậm luồng trả kết quả đặt hàng cho khách.
+    if (isConversion) this.triggerFlushSafe();
 
     await this.syncReportSafe(order.createdAt);
     return this.shape(order);
@@ -209,6 +252,13 @@ export class PurchaseOrdersService {
     const prevStatus = this.toStatus(existing.status);
     const nextStatus = this.toStatus(dto.status ?? existing.status);
 
+    // Checkout giỏ: cart → pending (lần đầu thành đơn thật) = chuyển đổi → enqueue lead.
+    // Dùng lại đúng điều kiện movedOutFromCart của trừ kho (không phải hủy).
+    const movedOutFromCart =
+      prevStatus === PurchaseOrderStatus.CART &&
+      nextStatus !== PurchaseOrderStatus.CART &&
+      nextStatus !== PurchaseOrderStatus.CANCELLED;
+
     const data: Prisma.PurchaseOrderUpdateInput = {};
     if (dto.status !== undefined) data.status = dto.status as PrismaStatus;
     if (dto.address !== undefined) {
@@ -216,6 +266,12 @@ export class PurchaseOrdersService {
     }
     if (dto.nonLoginUser !== undefined) {
       data.nonLoginUserEmail = dto.nonLoginUser?.email;
+    }
+    // Attribution ở đường checkout giỏ (PATCH): chỉ ghi khi payload có, nguyên văn (D-03/D-06)
+    if (dto.visitorId !== undefined) data.visitorId = dto.visitorId;
+    if (dto.camp !== undefined) data.camp = dto.camp;
+    if (dto.utm !== undefined) {
+      data.utm = dto.utm ? this.toJson(dto.utm) : Prisma.JsonNull;
     }
     if (prevStatus !== PurchaseOrderStatus.DELIVERED &&
         nextStatus === PurchaseOrderStatus.DELIVERED) {
@@ -264,8 +320,21 @@ export class PurchaseOrdersService {
         nextItems,
       );
 
+      // Enqueue lead CÙNG tx khi giỏ chuyển thành đơn thật (D-04). sourceId = id đơn
+      // → nếu POST tạo pending đã enqueue trước đó thì UNIQUE outbox làm no-op (D-08).
+      if (movedOutFromCart) {
+        await this.outbox.enqueue(tx, {
+          sourceKind: 'order',
+          sourceId: id,
+          payload: buildOrderLeadPayload(saved),
+        });
+      }
+
       return saved;
     });
+
+    // Bắn gần-tức-thì sau commit (non-blocking) — lỗi webhook không chặn khách.
+    if (movedOutFromCart) this.triggerFlushSafe();
 
     return order;
   }

@@ -1,11 +1,13 @@
 import type { TVideoCompleteResponse } from "~/types/video-upload.type";
+import { VIDEO_UPLOAD_MAX_BYTES } from "~/constants/video-upload.constant";
+import { compressVideoFile } from "~/utils/video-compression.utils";
 import {
   getVideoUploadErrorMessage,
   putFileToPresignedUrl,
   resolveVideoContentType,
 } from "~/utils/video-upload.utils";
 
-export type TDescriptionVideoUploadPhase = "idle" | "uploading";
+export type TDescriptionVideoUploadPhase = "idle" | "compressing" | "uploading";
 
 export type TDescriptionVideoUploadProgress = {
   phase: TDescriptionVideoUploadPhase;
@@ -27,8 +29,7 @@ export default function useUploadDescriptionVideo() {
     sourceFile: File,
     options?: TUploadDescriptionVideoOptions,
   ): Promise<TVideoCompleteResponse> => {
-    const sourceContentType = resolveVideoContentType(sourceFile);
-    if (!sourceContentType) {
+    if (!resolveVideoContentType(sourceFile)) {
       throw new Error("Định dạng video không được hỗ trợ.");
     }
 
@@ -36,17 +37,33 @@ export default function useUploadDescriptionVideo() {
       isUploadingVideo.value = true;
       error.value = "";
 
+      // Video > 50MB: nén trên trình duyệt trước; ≤ 50MB giữ nguyên.
+      if (sourceFile.size > VIDEO_UPLOAD_MAX_BYTES) {
+        options?.onProgress?.({ phase: "compressing", percent: 0 });
+      }
+      const uploadFile = await compressVideoFile(sourceFile, {
+        signal: options?.signal,
+        onProgress: (percent) => {
+          options?.onProgress?.({ phase: "compressing", percent });
+        },
+      });
+
+      const contentType = resolveVideoContentType(uploadFile);
+      if (!contentType) {
+        throw new Error("Định dạng video không được hỗ trợ.");
+      }
+
       options?.onProgress?.({ phase: "uploading", percent: 0 });
 
       const presignResponse = await $uploadRepository.presignDescriptionVideo({
-        fileName: sourceFile.name,
-        contentType: sourceContentType,
-        size: sourceFile.size,
+        fileName: uploadFile.name,
+        contentType,
+        size: uploadFile.size,
       });
 
       const presignData = presignResponse.data;
 
-      await putFileToPresignedUrl(sourceFile, presignData.uploadUrl, presignData.headers, {
+      await putFileToPresignedUrl(uploadFile, presignData.uploadUrl, presignData.headers, {
         onProgress: (percent) => {
           options?.onProgress?.({ phase: "uploading", percent });
         },
@@ -55,9 +72,9 @@ export default function useUploadDescriptionVideo() {
 
       const completeResponse = await $uploadRepository.completeDescriptionVideo({
         objectKey: presignData.objectKey,
-        fileName: sourceFile.name,
-        contentType: sourceContentType,
-        size: sourceFile.size,
+        fileName: uploadFile.name,
+        contentType,
+        size: uploadFile.size,
       });
 
       options?.onProgress?.({ phase: "uploading", percent: 100 });

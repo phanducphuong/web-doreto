@@ -11,7 +11,18 @@ export const getDisplayPurchaseCount = (product?: TPurchaseCountProduct | null):
   return realCount + virtualCount;
 };
 
+/** Rút gọn tên sản phẩm còn tối đa `maxWords` từ để hiển thị trong danh sách chọn. */
+export const getShortProductName = (name?: string, maxWords = 6): string => {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return words.join(" ");
+  return `${words.slice(0, maxWords).join(" ")}…`;
+};
+
+/**
+ * Đường dẫn slug cho URL /san-pham/:slug. Ưu tiên slug SEO do BE sinh; dự phòng
+ * tra theo _id nếu SP chưa có slug (dữ liệu cũ chưa backfill) để không vỡ link.
+ */
 export const generateProductSlug = (product: TExistedProduct) => {
   if (!product) return "";
-  return `${generateSlug(product.name)}-I${product._id}`;
+  return product.slug || String(product._id);
 };

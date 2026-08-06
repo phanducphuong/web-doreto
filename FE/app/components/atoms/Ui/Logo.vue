@@ -1,8 +1,7 @@
 <template>
   <NuxtLink to="/" class="w-fit shrink-0 block" aria-label="Trang chủ">
-    <!-- Ảnh logo có sẵn chữ ở 1/4 dưới — cắt bớt để chỉ hiện hình con ngựa -->
-    <span class="block overflow-hidden w-10 h-7 lg:(w-16 h-11)">
-      <img :src="Logo" alt="Logo" class="block w-full h-auto" />
+    <span class="block h-7 lg:h-10">
+      <img :src="Logo" alt="Logo Doreto" class="block h-full w-auto object-contain" />
     </span>
   </NuxtLink>
 </template>

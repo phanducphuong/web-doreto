@@ -69,37 +69,11 @@
                 </ol>
               </div>
 
-              <div
-                class="flex items-start gap-3 rounded-2xl border border-tertiary/10 bg-tertiary-fixed p-2.5 md:p-4"
-              >
-                <PhoneCall class="mt-0.5 size-5 shrink-0 text-white-fixed" />
-                <div>
-                  <p class="text-sm font-bold uppercase tracking-wide text-white-fixed">
-                    Cần hỗ trợ ngay?
-                  </p>
-                  <p class="mt-1 text-sm leading-snug text-white-fixed-variant md:leading-relaxed">
-                    Gọi hotline
-                    <a
-                      href="tel:0981128086"
-                      class="font-semibold underline-offset-2 hover:underline text-emerald-500"
-                    >
-                      0981 128 086
-                    </a>
-                    hoặc nhắn tin qua kênh liên hệ trên website.
-                  </p>
-                </div>
-              </div>
-
-              <div class="flex flex-col gap-2 sm:flex-row md:pt-1">
-                <NuxtLink to="/san-pham" class="flex-1">
+              <div class="md:pt-1">
+                <NuxtLink to="/san-pham" class="block">
                   <AtomsButton type="primaryGradient" class="center-child w-full !p-3 md:!p-4">
                     Xem thêm sản phẩm khác
                   </AtomsButton>
-                </NuxtLink>
-                <NuxtLink to="/lien-he" class="flex-1">
-                  <AtomsButton type="outline" class="center-child w-full !p-3 md:!p-4"
-                    >Liên hệ hỗ trợ</AtomsButton
-                  >
                 </NuxtLink>
               </div>
             </div>
@@ -117,17 +91,17 @@
                 class="absolute inset-x-0 top-1/2 block overflow-hidden -translate-y-1/2"
                 style="height: 72%"
               >
-                <img :src="Logo" alt="Logo Doreto Fashion" class="block h-auto w-full" />
+                <img :src="Logo" alt="Logo Doreto" class="block h-auto w-full" />
               </span>
             </div>
 
             <p class="font-noto mt-1 text-lg font-semibold italic text-primary md:text-xl">
-              Doreto Fashion
+              Doreto
             </p>
             <p
               class="mt-0.5 max-w-md text-center text-base font-medium italic leading-snug text-on-surface md:text-lg"
             >
-              Mang phong cách thời trang hiện đại đến người Việt
+              Mang tinh hoa nghệ thuật vào không gian sống của người Việt hiện đại
             </p>
           </div>
         </section>
@@ -137,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { CheckCircle2, PhoneCall, X } from "lucide-vue-next";
+import { CheckCircle2, X } from "lucide-vue-next";
 import Logo from "~/assets/images/web-logo.png";
 
 const nextSteps = [

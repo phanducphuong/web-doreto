@@ -2,7 +2,7 @@
   <div class="group grid cursor-pointer gap-1.5 sm:gap-2">
     <div class="overflow-hidden relative" :class="flush ? 'rounded-none' : 'rounded-md'">
       <AtomsUiImageWithFallback
-        :src="product?.thumbnailUrls?.[0]"
+        :src="product?.thumbnailUrls?.[0] || product?.imageUrls?.[0]"
         :alt="product.name"
         :width="294"
         :height="367"

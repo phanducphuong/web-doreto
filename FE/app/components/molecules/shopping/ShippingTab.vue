@@ -65,7 +65,7 @@
         <section>
           <div class="grid grid-cols-1 gap-2.5 sm:gap-5 md:grid-cols-2 md:gap-6">
             <div class="md:col-span-2">
-              <AtomsFormItem label="Họ và tên" :error-message="errors.name" required>
+              <AtomsFormItem label="Họ và tên" :error-message="errors.name">
                 <AtomsFormInput
                   v-model="shippingForm.name"
                   class="w-full"
@@ -90,7 +90,7 @@
             </div>
 
             <div class="md:col-span-2">
-              <AtomsFormItem label="Địa chỉ giao hàng" :error-message="errors.address" required>
+              <AtomsFormItem label="Địa chỉ giao hàng" :error-message="errors.address">
                 <AtomsFormTextArea
                   v-model="shippingForm.address"
                   class="w-full"
@@ -165,6 +165,7 @@ const { submitPurchaseOrder, removeOrderedItemsFromCart, setBuyNowItem, setLastB
 const { buyNowItem } = storeToRefs(usePurchaseOrderStore());
 const { $userProfileRepository } = useNuxtApp();
 const toast = useToast();
+const { trackBeginCheckout, trackOrderSuccess } = useTracking();
 
 const emit = defineEmits<{
   onSubmitCartSuccess: [order: Awaited<ReturnType<typeof submitPurchaseOrder>>];
@@ -220,6 +221,8 @@ const loadShippingFormFromLocalStorage = () => {
 onMounted(() => {
   loadShippingFormFromLocalStorage();
   loadSavedAddresses();
+  // Tab Giao hàng chỉ mount khi khách bước vào checkout → bắn begin_checkout (D-05).
+  trackBeginCheckout();
 });
 
 const loadSavedAddresses = async () => {
@@ -261,6 +264,8 @@ const handleSubmit = async () => {
   saveShippingFormToLocalStorage();
   const res = await submitPurchaseOrder({ address: buildOrderAddress() });
   if (res) {
+    // Đặt đơn thành công → bắn order_success (D-05), fire-and-forget.
+    trackOrderSuccess(String(res._id));
     toast.success({ message: "Gửi đơn hàng thành công. Hãy chờ nhân viên liên hệ xác nhận" });
     if (isBuyNowCheckout) {
       setBuyNowItem(null);
@@ -278,25 +283,11 @@ const handleSubmit = async () => {
 const validateShippingForm = (data: TShippingForm): TShippingFormError => {
   const formErrors: TShippingFormError = {};
 
-  if (!data.name || data.name.trim() === "") {
-    formErrors.name = "Tên người nhận là bắt buộc";
-  } else if (data.name.trim().length < 2) {
-    formErrors.name = "Tên phải ít nhất 2 ký tự";
-  } else if (data.name.trim().length > 200) {
-    formErrors.name = "Tên không được vượt quá 200 ký tự";
-  }
-
+  // Chỉ SĐT là bắt buộc + đúng định dạng. Tên và địa chỉ cho phép để trống hoặc
+  // sai, vẫn cho đặt hàng bình thường (nhân viên sẽ gọi xác nhận lại).
   const phoneError = validateVnPhoneNumber(data.phoneNumber);
   if (phoneError) {
     formErrors.phoneNumber = phoneError;
-  }
-
-  if (!data.address || data.address.trim() === "") {
-    formErrors.address = "Địa chỉ giao hàng là bắt buộc";
-  } else if (data.address.trim().length < 5) {
-    formErrors.address = "Địa chỉ quá ngắn";
-  } else if (data.address.trim().length > 500) {
-    formErrors.address = "Địa chỉ không được vượt quá 500 ký tự";
   }
 
   return formErrors;

@@ -70,7 +70,7 @@
 
   <div
     v-if="!isMobileLayout || (isMobileLayout && !!type)"
-    class="space-y-5 rounded-xl p-3 -mx-3 lg:(bg-surface-container-low p-4 space-y-8 p-8 mx-0)"
+    class="space-y-5 rounded-xl p-3 -mx-3 lg:(bg-surface-container-low p-4 space-y-4 mx-0)"
     :class="{ 'ring-1 ring-danger': validateMsg }"
   >
     <!-- * CHỌN OPTION PRODUCT -->
@@ -115,7 +115,7 @@
       <AtomsButton
         v-if="type !== 'buy-now'"
         type="secondary"
-        class="h-unset !py-4 sm:!py-5 disabled:(opacity-50 cursor-not-allowed)"
+        class="h-unset !py-4 sm:!py-5 lg:!py-3.5 disabled:(opacity-50 cursor-not-allowed)"
         :disabled="!priceData.stockCount"
         @click="handleAddToCart"
       >
@@ -125,7 +125,7 @@
       <AtomsButton
         v-if="type !== 'cart'"
         type="primaryGradient"
-        class="h-unset !py-4 sm:!py-5 disabled:(opacity-50 cursor-not-allowed)"
+        class="h-unset !py-4 sm:!py-5 lg:!py-3.5 disabled:(opacity-50 cursor-not-allowed)"
         :disabled="!priceData.stockCount"
         @click="handleBuyNow"
       >

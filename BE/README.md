@@ -18,8 +18,7 @@ pnpm install
 # 3. Tạo file .env từ mẫu rồi điền giá trị
 cp .env.example .env
 # QUAN TRỌNG: đảm bảo có dòng DATABASE_URL trỏ tới Postgres local:
-# (cổng 5433 để không đụng Postgres của dự án web decor đang dùng 5432)
-# DATABASE_URL="postgresql://doreto:doreto_secret@localhost:5433/doreto_web?schema=public"
+# DATABASE_URL="postgresql://doreto:doreto_secret@localhost:5432/doreto_web?schema=public"
 
 # 4. Tạo bảng trong database theo schema
 pnpm prisma migrate dev
@@ -27,7 +26,7 @@ pnpm prisma migrate dev
 # 5. Nạp dữ liệu mẫu (admin + danh mục + sản phẩm thời trang)
 pnpm seed
 
-# 6. Chạy backend (cổng 8082 — tránh đụng web decor dùng 8081)
+# 6. Chạy backend (cổng 8081)
 pnpm dev
 ```
 

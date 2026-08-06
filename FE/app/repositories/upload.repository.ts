@@ -1,7 +1,3 @@
-import {
-  MEDIA_COMPRESSION_PRESETS,
-  type TMediaCompressionPreset,
-} from "~/constants/media-compression.constant";
 import type { TUploadFileResponse } from "~/types/file.type";
 import type {
   TVideoCompleteApiResponse,
@@ -10,23 +6,15 @@ import type {
   TVideoPresignRequest,
 } from "~/types/video-upload.type";
 
-export type TUploadFilesRequestOptions = {
-  preset?: TMediaCompressionPreset;
-};
-
+// Việc nén ảnh diễn ra ở client (media-compression.utils) TRƯỚC khi gọi hàm này —
+// BE không nhận tham số preset nào.
 const createUploadRepository = ($api: typeof $fetch) => ({
-  uploadFiles: async (files: File[], options?: TUploadFilesRequestOptions) => {
+  uploadFiles: async (files: File[]) => {
     const formData = new FormData();
 
     files.forEach((file) => {
       formData.append("files", file);
     });
-
-    if (options?.preset) {
-      const compression = MEDIA_COMPRESSION_PRESETS[options.preset];
-      formData.append("maxWidth", String(compression.maxWidth));
-      formData.append("maxBytes", String(compression.maxBytes));
-    }
 
     return $api<TUploadFileResponse>("/uploads/files", {
       method: "POST",

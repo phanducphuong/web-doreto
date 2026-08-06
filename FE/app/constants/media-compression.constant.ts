@@ -7,39 +7,41 @@ export type TMediaCompressionPreset =
 
 export type TMediaCompressionOptions = {
   maxWidth: number;
-  /** Dung lượng mục tiêu sau khi BE Sharp nén WebP (bytes). */
-  maxBytes: number;
 };
+
+/**
+ * Giới hạn dung lượng ảnh upload: ảnh > 500KB sẽ tự nén cho tới khi ≤ 500KB,
+ * ảnh ≤ 500KB giữ nguyên không đụng tới. BE cũng chặn lại mức này (sharp).
+ */
+export const IMAGE_UPLOAD_MAX_BYTES = 500 * 1024;
+
+/** Các mức quality thử lần lượt khi nén — bắt đầu cao để giữ chất lượng. */
+export const IMAGE_COMPRESSION_QUALITY_STEPS = [0.92, 0.87, 0.82, 0.75, 0.68, 0.6] as const;
+
+/** Khi hạ hết quality mà vẫn to: thu nhỏ dần theo tỉ lệ này. */
+export const IMAGE_COMPRESSION_DOWNSCALE_RATIO = 0.85;
+
+/** Không thu nhỏ ảnh hẹp hơn mức này (px) để tránh vỡ hình. */
+export const IMAGE_COMPRESSION_MIN_WIDTH = 640;
 
 /** Cùng maxWidth với NuxtImg width="1248" format="webp" trên trang chủ. */
 export const MEDIA_COMPRESSION_PRESETS: Record<TMediaCompressionPreset, TMediaCompressionOptions> =
   {
     description: {
       maxWidth: 1248,
-      maxBytes: 160_000,
     },
     product: {
       maxWidth: 1248,
-      maxBytes: 180_000,
     },
     thumbnail: {
       maxWidth: 600,
-      maxBytes: 90_000,
     },
     option: {
       maxWidth: 800,
-      maxBytes: 120_000,
     },
     feedback: {
       maxWidth: 800,
-      maxBytes: 120_000,
     },
   };
 
 export const DEFAULT_UPLOAD_COMPRESSION_PRESET: TMediaCompressionPreset = "feedback";
-
-/** Sharp WebP quality khởi đầu — tương đương IPX/Nuxt Image mặc định. */
-export const MEDIA_COMPRESSION_SHARP_INITIAL_QUALITY = 80;
-
-/** Sharp WebP quality tối thiểu khi ép giảm dung lượng. */
-export const MEDIA_COMPRESSION_SHARP_MIN_QUALITY = 45;

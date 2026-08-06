@@ -57,9 +57,9 @@
         <div
           class="absolute bottom-0 left-0 z-10 flex max-w-500px flex-col gap-4 p-(x-5 b-6) sm:p-(x-7 b-8) md:gap-6 md:p-(x-10 b-12)"
         >
-          <p class="text-2xl font-semibold sm:text-3xl md:text-4xl">Cẩm nang phối đồ</p>
+          <p class="text-2xl font-semibold sm:text-3xl md:text-4xl">Phong cách & phối đồ</p>
           <p class="text-(sm white/80)">
-            Tìm hiểu cách phối trang phục để tôn dáng và thể hiện phong cách riêng của bạn.
+            Khám phá bí quyết chọn đồ và phối trang phục giúp phái mạnh tự tin, lịch lãm mỗi ngày.
           </p>
 
           <NuxtLink to="/lien-he" class="text-sm w-fit flex items-center gap-2 font-semibold">
@@ -79,9 +79,9 @@ import { ArrowRight } from "lucide-vue-next";
 import type { TExistedProduct } from "~/types/product.type";
 
 useSeoMeta({
-  title: "Doreto | Trang chủ",
+  title: "Doreto | Thời trang nam",
   description:
-    "Khám phá sản phẩm thời trang, danh mục nổi bật và gợi ý phối đồ theo phong cách riêng của bạn.",
+    "Khám phá thời trang nam Doreto: áo, quần và phụ kiện cùng gợi ý phối đồ giúp phái mạnh tự tin, lịch lãm.",
 });
 
 useBreadcrumbSchema([{ name: "Trang chủ", path: "/" }]);

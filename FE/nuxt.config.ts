@@ -23,8 +23,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
+      // TODO(deploy): thay bằng URL thật của service doreto-be sau khi deploy Cloud Run
+      // (hoặc custom domain, vd https://api.dorreto.com). KHÔNG để trỏ về BE decor.
       apiBaseUrl:
-        import.meta.env.NUXT_PUBLIC_API_BASE_URL || "https://be-nemp-production.up.railway.app",
+        import.meta.env.NUXT_PUBLIC_API_BASE_URL || "https://api.dorreto.com",
     },
   },
 
@@ -43,8 +45,8 @@ export default defineNuxtConfig({
           content:
             "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
         },
-        { property: "og:title", content: "Doreto" },
-        { property: "og:image", content: "/banner.webp" },
+        { property: "og:title", content: "Doreto — Thời trang nam" },
+        { property: "og:image", content: "/banner.jpg" },
       ],
       link: [
         { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -72,7 +74,27 @@ export default defineNuxtConfig({
   },
 
   image: {
-    domains: ["localhost", "127.0.0.1", "res.cloudinary.com", "cdn.decorviet.com.vn"],
+    // Ảnh được resize/nén NGAY TẠI BIÊN Cloudflare (/cdn-cgi/image/) và cache ở
+    // đó — Cloud Run không còn đụng vào ảnh nữa. Xem app/providers/cf-images.ts.
+    // ⚠️ Cần bật "Image Transformations" cho zone dorreto.com trong dashboard
+    // Cloudflare trước khi deploy bản này, nếu không ảnh sẽ 404.
+    provider: "cfImages",
+    providers: {
+      cfImages: {
+        name: "cfImages",
+        provider: "~/providers/cf-images.ts",
+        options: { baseURL: "https://cdn.dorreto.com" },
+      },
+    },
+    domains: ["localhost", "127.0.0.1", "cdn.dorreto.com"],
+
+    // Dự phòng: nếu muốn quay lại resize tại server (ipx), bỏ 2 dòng provider ở
+    // trên là @nuxt/image tự dùng lại _ipx (kèm plugin server/plugins/force-ipv4.ts).
+    ipx: {
+      http: {
+        fetchOptions: { retry: 3, retryDelay: 250, timeout: 10_000 },
+      },
+    },
   },
 
   vite: {

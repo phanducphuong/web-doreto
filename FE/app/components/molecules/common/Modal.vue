@@ -17,12 +17,19 @@
           @click.stop
         >
           <!-- * HEADER -->
-          <div v-if="header || isShowClose" class="cms-title flex items-center shrink-0 p-5">
-            {{ header }}
+          <div
+            v-if="header || isShowClose || $slots['header']"
+            :class="['flex items-center shrink-0 gap-3', headerClass]"
+          >
+            <div class="min-w-0 flex-1">
+              <slot name="header">
+                <span class="cms-title">{{ header }}</span>
+              </slot>
+            </div>
 
             <AtomsButton
               v-if="isShowClose"
-              class="ml-auto w-9 h-9"
+              class="w-9 h-9 shrink-0"
               type="ghost"
               circle
               :icon="X"
@@ -58,6 +65,8 @@ export type TAppModalProps = {
   isShowClose?: boolean;
   closeOnClickOverlay?: boolean;
   width?: number;
+  // Cho phép ghi đè padding header (vd popup cần header gọn để nhường chỗ cho nội dung)
+  headerClass?: string;
 };
 
 const {
@@ -67,6 +76,7 @@ const {
   isShowClose,
   width = 500,
   defaultVisible = false,
+  headerClass = "p-5",
 } = defineProps<TAppModalProps>();
 
 const modalVisible = ref(defaultVisible || false);

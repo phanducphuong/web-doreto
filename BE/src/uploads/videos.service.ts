@@ -116,11 +116,12 @@ export class VideosService {
     }
 
     const client = getR2Client();
+    const bucket = r2Bucket();
 
     let actualSize: number;
     try {
       const head = await client.send(
-        new HeadObjectCommand({ Bucket: r2Bucket(), Key: objectKey }),
+        new HeadObjectCommand({ Bucket: bucket, Key: objectKey }),
       );
       actualSize = head.ContentLength ?? 0;
     } catch {
@@ -132,7 +133,7 @@ export class VideosService {
 
     if (actualSize > VIDEO_MAX_BYTES) {
       await client
-        .send(new DeleteObjectCommand({ Bucket: r2Bucket(), Key: objectKey }))
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }))
         .catch(() => undefined);
 
       throw new BadRequestException({
@@ -144,7 +145,7 @@ export class VideosService {
     const reportedSize = typeof input.size === 'number' ? input.size : null;
     if (reportedSize !== null && reportedSize !== actualSize) {
       await client
-        .send(new DeleteObjectCommand({ Bucket: r2Bucket(), Key: objectKey }))
+        .send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }))
         .catch(() => undefined);
 
       throw new BadRequestException({

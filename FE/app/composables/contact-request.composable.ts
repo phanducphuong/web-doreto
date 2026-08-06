@@ -28,7 +28,7 @@ function buildPagination(
 
 export function useContactRequest() {
   const toast = useToast();
-  const { $contactRequestRepository } = useNuxtApp();
+  const { $contactRequestRepository, $tracking } = useNuxtApp();
 
   const isFetching = ref(false);
   const listContacts = ref<TContactRequest[]>([]);
@@ -58,7 +58,11 @@ export function useContactRequest() {
 
   const createContact = async (dto: TCreateContactDto): Promise<boolean> => {
     try {
-      await $contactRequestRepository.createContact(dto);
+      // Bơm attribution first-touch (phase 37) — fail-safe: thiếu $tracking → {} → cột null.
+      const payload: TCreateContactDto = { ...dto, ...($tracking?.getAttribution() ?? {}) };
+      await $contactRequestRepository.createContact(payload);
+      // Gửi liên hệ thành công → bắn event funnel thứ 5 (D-05), fire-and-forget.
+      $tracking?.trackEvent("contact_form");
       toast.success({ message: "Gửi yêu cầu thành công" });
       return true;
     } catch (error) {

@@ -37,6 +37,9 @@ const props = withDefaults(
     multiple?: boolean;
     disabled?: boolean;
     alt?: string;
+    // Bật: bấm vào KHÔNG mở hộp chọn file mà phát sự kiện "pick" để cha tự xử lý
+    // (vd mở popup chọn từ ảnh sản phẩm). Vẫn giữ nguyên phần hiển thị preview.
+    pickMode?: boolean;
   }>(),
   {
     file: null,
@@ -45,12 +48,14 @@ const props = withDefaults(
     multiple: false,
     disabled: false,
     alt: "image",
+    pickMode: false,
   },
 );
 
 const emit = defineEmits<{
   "update:file": [value: File | null];
   "update:files": [value: File[]];
+  pick: [];
 }>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
@@ -92,6 +97,10 @@ onBeforeUnmount(() => {
 
 const openPicker = () => {
   if (props.disabled) return;
+  if (props.pickMode) {
+    emit("pick");
+    return;
+  }
   inputRef.value?.click();
 };
 

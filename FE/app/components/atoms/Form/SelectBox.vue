@@ -71,20 +71,46 @@
     <!-- DROPDOWN -->
     <div
       v-if="open"
-      class="absolute left-0 top-full z-50 mt-2 max-h-60 w-full overflow-auto rounded-xl border border-outline-variant bg-white p-2 shadow-lg"
+      class="absolute left-0 top-full z-50 mt-2 w-full overflow-auto rounded-xl border border-outline-variant bg-white p-2 shadow-lg"
+      :class="wide ? 'max-h-[70vh]' : 'max-h-72'"
     >
-      <div
-        v-for="opt in filteredOptions"
-        :key="opt.value"
-        class="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm text-on-surface transition-colors hover:bg-surface-container-low"
-        @click="selectOption(opt)"
-      >
-        <span>{{ opt.label }}</span>
-        <Check v-if="isSelected(opt.value)" class="size-4 text-primary" />
-      </div>
+      <div :class="wide ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : ''">
+        <div
+          v-for="opt in filteredOptions"
+          :key="opt.value"
+          class="flex cursor-pointer items-center gap-3 rounded-lg border px-2 py-2 text-sm text-on-surface transition-colors"
+          :class="
+            isSelected(opt.value)
+              ? 'border-#22c55e bg-#dcfce7 font-medium'
+              : 'border-transparent hover:bg-surface-container-low'
+          "
+          @click="selectOption(opt)"
+        >
+          <img
+            v-if="opt.image"
+            :src="opt.image"
+            alt=""
+            loading="lazy"
+            class="shrink-0 rounded-md border border-outline-variant/60 object-cover"
+            :class="wide ? 'size-18' : 'size-11'"
+          />
+          <span class="min-w-0 flex-1 truncate" :title="opt.title || opt.label">{{
+            opt.label
+          }}</span>
+          <Check
+            v-if="isSelected(opt.value)"
+            class="size-5 shrink-0 text-#16a34a"
+            :stroke-width="3"
+          />
+        </div>
 
-      <div v-if="!filteredOptions.length" class="px-3 py-2 text-xs text-outline">
-        Không có dữ liệu
+        <div
+          v-if="!filteredOptions.length"
+          class="px-3 py-2 text-xs text-outline"
+          :class="{ 'col-span-full': wide }"
+        >
+          Không có dữ liệu
+        </div>
       </div>
     </div>
   </div>
@@ -98,6 +124,8 @@ import { useClickOutside } from "~/composables/clickOutside.composable";
 type Option = {
   label: string;
   value: string | number;
+  image?: string;
+  title?: string;
 };
 
 const props = withDefaults(
@@ -110,11 +138,13 @@ const props = withDefaults(
     error?: string;
     disabled?: boolean;
     placeholder?: string;
+    wide?: boolean;
   }>(),
   {
     isMultiple: false,
     clearable: true,
     placeholder: "Chọn",
+    wide: false,
   },
 );
 

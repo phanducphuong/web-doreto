@@ -12,7 +12,7 @@
 <script setup lang="ts">
 useSeoMeta({
   title: "Lịch sử đơn hàng | Doreto",
-  description: "Theo dõi trạng thái và lịch sử các đơn hàng gần đây của bạn tại Doreto.",
+  description: "Theo dõi trạng thái và lịch sử các đơn hàng thời trang nam gần đây của bạn tại Doreto.",
 });
 
 useBreadcrumbSchema([

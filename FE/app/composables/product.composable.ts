@@ -129,10 +129,8 @@ export default function useProduct() {
           itemError.code = "Mã biến thể tối đa 100 ký tự";
         }
 
-        // ✅ Image option (URL hoặc FILE)
-        if (!value.imageUrl && !value.imageFile?.length) {
-          itemError.imageUrl = "Ảnh là bắt buộc";
-        }
+        // Ảnh biến thể là TÙY CHỌN (không bắt buộc). Sản phẩm đã có ảnh chính;
+        // biến thể không có ảnh riêng sẽ dùng ảnh sản phẩm khi hiển thị.
 
         // ✅ Giá
         if (value.price == null) {

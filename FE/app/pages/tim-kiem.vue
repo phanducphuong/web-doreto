@@ -62,8 +62,8 @@ useSeoMeta({
   title: () => `${headLabel.value} | Doreto`,
   description: () =>
     keyword.value
-      ? `Khám phá các sản phẩm phù hợp với từ khóa "${keyword.value}" tại Doreto.`
-      : "Khám phá các sản phẩm thời trang tại Doreto.",
+      ? `Khám phá các sản phẩm thời trang nam phù hợp với từ khóa "${keyword.value}" tại Doreto.`
+      : "Khám phá các sản phẩm thời trang nam tại Doreto.",
 });
 
 useBreadcrumbSchema(

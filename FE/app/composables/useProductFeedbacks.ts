@@ -26,8 +26,8 @@ export default function useProductFeedbacks(
     const value = toValue(productId);
     if (value === undefined || value === null || value === "") return null;
 
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric : null;
+    // Id sản phẩm là UUID (Postgres); vẫn nhận id số của hệ cũ
+    return String(value);
   });
 
   const fetchFeedbacks = async () => {

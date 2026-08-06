@@ -56,12 +56,16 @@ const pendingResolve = ref<((url: string | null) => void) | null>(null);
 const canCancel = computed(() => Boolean(abortController.value));
 
 const phaseLabel = computed(() => {
+  if (phase.value === "compressing") return "Đang nén video";
   if (phase.value === "uploading") return "Đang tải lên";
   if (errorMessage.value) return "Upload thất bại";
   return "Sẵn sàng";
 });
 
 const phaseHint = computed(() => {
+  if (phase.value === "compressing") {
+    return "Video lớn hơn 50MB — đang nén lại trên trình duyệt để trang tải nhẹ hơn.";
+  }
   if (phase.value === "uploading") {
     return "Đang upload trực tiếp lên Cloudflare R2.";
   }

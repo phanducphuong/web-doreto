@@ -6,7 +6,7 @@
           Khách Hàng Nói Gì
         </h2>
         <p class="text-sm text-on-surface-variant sm:text-base">
-          Chia sẻ từ những khách hàng đã tin chọn Doreto.
+          Chia sẻ từ những khách hàng đã tin chọn thời trang nam Doreto.
         </p>
       </div>
     </div>
@@ -29,16 +29,16 @@
 const reviews = [
   {
     author: "Ngô Mạnh Linh",
-    content: `"Chất vải rất đẹp, đường may chắc chắn. Mặc lên form chuẩn như hình, mình đã quay lại mua thêm mấy món nữa."`,
+    content: `"Chất vải dày dặn, đường may chắc chắn. Form áo chuẩn người, mặc lên trẻ trung mà vẫn lịch sự."`,
   },
   {
     author: "Phùng Gia Hiến",
-    content: `"Dịch vụ chăm sóc khách hàng của Doreto rất tuyệt vời. Shop tư vấn size rất kỹ theo chiều cao cân nặng của mình."`,
+    content: `"Dịch vụ tư vấn của Doreto rất tận tình. Nhân viên gợi ý size và cách phối đồ đúng gu của mình luôn."`,
   },
   {
     author: "Trần Thanh Hiền",
     content:
-      "Đóng gói rất chỉn chu, giao hàng nhanh. Rất an tâm khi mua làm quà tặng người thân.",
+      "Giao hàng nhanh, đóng gói đẹp và gọn gàng. Quần đúng form, đứng dáng, mình sẽ ủng hộ shop dài dài.",
   },
 ];
 </script>

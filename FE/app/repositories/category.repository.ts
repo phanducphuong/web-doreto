@@ -3,7 +3,6 @@ import repositoryFactory from "./repository.factory";
 
 const createCategoryRepository = ($api: typeof $fetch) => ({
   ...repositoryFactory.create<TExistedCategory>($api, "/categories"),
-  getHighlightedCategories: async () => $api<TExistedCategory[]>("/categories/highlighted"),
   getCategoryCount: async () => $api<{ count: number }>("/categories/count"),
 });
 

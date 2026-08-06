@@ -1,4 +1,5 @@
 import type { TPaginateRequest, TPaginateResponse } from "./fetch.type";
+import type { TTrackingUtm } from "./tracking.type";
 
 export type TContactRequest = {
   _id: string;
@@ -19,6 +20,10 @@ export type TCreateContactDto = {
   name: string;
   phone?: string;
   email?: string;
+  // Attribution first-touch (phase 37) — optional, gửi kèm khi tạo liên hệ (D-05).
+  visitorId?: string;
+  camp?: string;
+  utm?: TTrackingUtm;
 };
 
 export type TMarkSpamDto = {

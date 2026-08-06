@@ -1,6 +1,6 @@
 <template>
   <OrganismsWebHeader />
-  <div class="max-w-1312px mx-auto px-4 py-4 py-0 md:(px-8 py-8) flex lg:gap-12">
+  <div class="max-w-1312px mx-auto px-4 py-4 py-0 md:(px-8 py-8) flex lg:(gap-12 py-4)">
     <LazyOrganismsProductFilter
       v-if="isHaveFilter"
       :config="layoutConfig.layoutWeb.filter"

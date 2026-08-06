@@ -7,8 +7,8 @@
     <p class="text-2xl font-semibold text-black">Tư vấn miễn phí</p>
 
     <p class="text-sm text-justify font-medium">
-      Bạn chưa biết chọn size hay phối đồ thế nào? Để lại thông tin, tư vấn viên của chúng tôi sẽ
-      gợi ý trang phục phù hợp nhất với bạn.
+      Bạn không biết mình thuộc mệnh nào? để lại thông tin, chuyên gia của chúng tôi sẽ tư vấn vật
+      phẩm phù hợp nhất.
     </p>
 
     <div class="space-y-5">

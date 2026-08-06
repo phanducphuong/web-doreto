@@ -13,7 +13,7 @@ import { FilterProductDto } from './dto/filter-product.dto';
 import { OptionValueDto } from './dto/option-value.dto';
 import { IPaginatedResponse } from 'src/common/interfaces/paginated-response.interface';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { normalizeText } from 'src/common/utils';
+import { normalizeText, generateSlug } from 'src/common/utils';
 import { ConfigService } from '@nestjs/config';
 import { GenerateProductDescriptionDto } from './dto/generate-product-description.dto';
 
@@ -117,8 +117,84 @@ export class ProductsService {
     return this.shape(product);
   }
 
+  /**
+   * Lấy sản phẩm theo slug (dùng cho trang chi tiết công khai).
+   * Dự phòng: nếu tham số là UUID (link cũ hoặc SP chưa backfill slug) thì
+   * tra tiếp theo id, tránh vỡ link trong giai đoạn chuyển tiếp.
+   */
+  async findBySlug(slug: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { slug },
+      include: PRODUCT_INCLUDE,
+    });
+    if (product) return this.shape(product);
+
+    if (isUUID(slug)) {
+      const byId = await this.prisma.product.findUnique({
+        where: { id: slug },
+        include: PRODUCT_INCLUDE,
+      });
+      if (byId) return this.shape(byId);
+    }
+
+    throw new NotFoundException('Product not found');
+  }
+
+  /** true nếu slug chưa bị SP khác chiếm (bỏ qua chính SP đang sửa). */
+  private async isSlugTaken(slug: string, excludeId?: string) {
+    const existing = await this.prisma.product.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+    return Boolean(existing && existing.id !== excludeId);
+  }
+
+  /**
+   * Kiểm tra slug (đã chuẩn hóa) có dùng được không — cho FE báo trùng ngay
+   * khi admin đang gõ, trước lúc bấm lưu.
+   */
+  async checkSlugAvailability(rawSlug: string, excludeId?: string) {
+    const slug = generateSlug(rawSlug ?? '');
+    if (!slug) {
+      return { slug: '', available: false, reason: 'empty' as const };
+    }
+    const taken = await this.isSlugTaken(slug, excludeId);
+    return { slug, available: !taken };
+  }
+
+  /** Từ slug gốc, thêm hậu tố -2, -3... cho tới khi không trùng. */
+  private async ensureUniqueSlug(base: string, excludeId?: string) {
+    const safeBase = base || 'san-pham';
+    let candidate = safeBase;
+    let counter = 2;
+    while (await this.isSlugTaken(candidate, excludeId)) {
+      candidate = `${safeBase}-${counter}`;
+      counter += 1;
+    }
+    return candidate;
+  }
+
+  /**
+   * Slug khi TẠO mới: admin nhập tay -> dùng đúng, trùng thì báo lỗi;
+   * bỏ trống -> tự sinh từ tên và tự thêm hậu tố để không bao giờ trùng.
+   */
+  private async resolveSlugForCreate(name: string, provided?: string) {
+    const trimmed = provided?.trim();
+    if (trimmed) {
+      const slug = generateSlug(trimmed);
+      if (!slug) {
+        throw new BadRequestException('Slug không hợp lệ');
+      }
+      if (await this.isSlugTaken(slug)) {
+        throw new ConflictException('Slug đã tồn tại, vui lòng chọn slug khác');
+      }
+      return slug;
+    }
+    return this.ensureUniqueSlug(generateSlug(name));
+  }
+
   async create(createProductDto: CreateProductDto) {
-    const { optionValues, categoryIds, tagIds, similarProductIds, ...productData } =
+    const { optionValues, categoryIds, tagIds, similarProductIds, slug, ...productData } =
       createProductDto;
 
     const uniqueSimilarIds = [...new Set(similarProductIds ?? [])];
@@ -130,9 +206,15 @@ export class ProductsService {
 
     const { minPrice, maxPrice, stock } = this.summaryOptionValue(options);
 
+    const resolvedSlug = await this.resolveSlugForCreate(
+      createProductDto.name,
+      slug,
+    );
+
     const created = await this.prisma.product.create({
       data: {
         name: createProductDto.name,
+        slug: resolvedSlug,
         description: productData.description,
         productOptions: productData.productOptions ?? [],
         imageUrls: productData.imageUrls ?? [],
@@ -268,13 +350,26 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    const { optionValues, categoryIds, tagIds, similarProductIds, ...productData } =
+    const { optionValues, categoryIds, tagIds, similarProductIds, slug, ...productData } =
       updateProductDto;
 
     // Unchecked input để nhận thẳng descriptionFrameId (uuid hoặc null = bỏ khung)
     const scalarData: Prisma.ProductUncheckedUpdateInput = { ...productData };
     if (productData.name !== undefined) {
       scalarData.normalizedName = normalizeText(productData.name);
+    }
+
+    // Slug CỐ ĐỊNH: đổi tên KHÔNG tự đổi slug. Chỉ cập nhật khi admin chủ động
+    // gửi slug mới; chuẩn hóa, chặn rỗng và chặn trùng với SP khác.
+    if (slug !== undefined) {
+      const nextSlug = generateSlug(slug);
+      if (!nextSlug) {
+        throw new BadRequestException('Slug không hợp lệ');
+      }
+      if (await this.isSlugTaken(nextSlug, id)) {
+        throw new ConflictException('Slug đã tồn tại, vui lòng chọn slug khác');
+      }
+      scalarData.slug = nextSlug;
     }
 
     await this.prisma.$transaction(async (tx) => {

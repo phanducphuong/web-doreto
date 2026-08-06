@@ -109,7 +109,7 @@ export type TFeedbackManagementItem = {
 };
 
 export type TAdminCreateFeedbackDto = {
-  productId: number;
+  productId: string | number;
   score: number;
   comment?: string;
   images?: string[];

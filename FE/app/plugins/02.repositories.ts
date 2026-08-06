@@ -7,6 +7,7 @@ import createProductRepository from "~/repositories/product.repository";
 import createPurchaseOrderRepository from "~/repositories/purchase-order.repository";
 import createReportingRepository from "~/repositories/reporting.repository";
 import createTagRepository from "~/repositories/tag.repository";
+import { createTrackingRepository } from "~/repositories/tracking.repository";
 import createUploadRepository from "~/repositories/upload.repository";
 import createUserManagementRepository from "~/repositories/user-management.repository";
 import createUserProfileRepository from "~/repositories/user-profile.repository";
@@ -28,6 +29,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       reportingRepository: createReportingRepository($api),
       userManagementRepository: createUserManagementRepository($api),
       userProfileRepository: createUserProfileRepository($api),
+      trackingRepository: createTrackingRepository($api),
     },
   };
 });

@@ -19,7 +19,7 @@ const createImageFrameRepository = ($api: typeof $fetch) => ({
       query,
     }),
 
-  getFrameById: (id: number) =>
+  getFrameById: (id: string) =>
     $api<TExistedImageFrame>(`/image-frames/${id}`, {
       method: "GET",
     }),
@@ -30,13 +30,13 @@ const createImageFrameRepository = ($api: typeof $fetch) => ({
       body: payload,
     }),
 
-  updateFrame: (id: number, payload: TUpdateImageFramePayload) =>
+  updateFrame: (id: string, payload: TUpdateImageFramePayload) =>
     $api<TExistedImageFrame>(`/image-frames/${id}`, {
       method: "PATCH",
       body: payload,
     }),
 
-  deleteFrame: (id: number) =>
+  deleteFrame: (id: string) =>
     $api<TExistedImageFrame>(`/image-frames/${id}`, {
       method: "DELETE",
     }),

@@ -1,15 +1,18 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Validate,
+  ValidateNested,
   ValidatorConstraint,
   ValidatorConstraintInterface,
   ValidationArguments,
 } from 'class-validator';
+import { UtmDto } from 'src/common/dto/utm.dto';
 
 @ValidatorConstraint({ name: 'hasPhoneOrEmail', async: false })
 class HasPhoneOrEmailConstraint implements ValidatorConstraintInterface {
@@ -61,4 +64,21 @@ export class CreateContactRequestDto {
   @MaxLength(320)
   @Transform(trimEmptyToUndefined)
   email?: string;
+
+  // Snapshot attribution first-touch từ FE (37-04 sẽ gửi). Lưu nguyên văn (D-03) —
+  // khớp mã camp sang CRM là việc phase 38. Thiếu field vẫn tạo liên hệ như cũ (D-07).
+  @IsOptional()
+  @IsUUID('4')
+  visitorId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  @Transform(trimEmptyToUndefined)
+  camp?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UtmDto)
+  utm?: UtmDto;
 }

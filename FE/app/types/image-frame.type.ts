@@ -10,7 +10,7 @@ export type TImageFrame = {
 };
 
 export type TExistedImageFrame = TImageFrame & {
-  _id: number;
+  _id: string;
   createdAt: string;
   updatedAt: string | null;
 };

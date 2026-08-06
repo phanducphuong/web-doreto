@@ -30,15 +30,9 @@
 
     <div v-if="items.length" class="space-y-4">
       <FeedbackItem
-        v-for="item in visibleItems"
+        v-for="item in previewItems"
         :key="item._id"
-        :feedback="item"
-        :current-user-id="currentUserId"
-        :delete-error="deleteErrors[String(item._id)] || ''"
-        :is-admin="isAdmin"
-        :is-deleting="deletingId === String(item._id)"
-        :is-replying="replyingId === String(item._id)"
-        :reply-error="replyErrors[String(item._id)] || ''"
+        v-bind="itemBindings(item)"
         @delete="$emit('delete', $event)"
         @reply="$emit('reply', $event)"
       />
@@ -47,12 +41,29 @@
         v-if="hiddenCount > 0"
         type="button"
         class="mx-auto flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-5 py-2 text-xs font-semibold text-stone-600 transition hover:(border-stone-300 text-stone-800) sm:text-sm"
-        @click="showMore"
+        @click="openAllFeedback"
       >
         Xem thêm đánh giá ({{ hiddenCount }})
         <ChevronDown class="size-4" />
       </button>
     </div>
+
+    <MoleculesCommonModal
+      ref="modalRef"
+      :header="`Tất cả đánh giá (${items.length})`"
+      :width="640"
+      is-show-close
+    >
+      <div class="space-y-4">
+        <FeedbackItem
+          v-for="item in items"
+          :key="item._id"
+          v-bind="itemBindings(item)"
+          @delete="$emit('delete', $event)"
+          @reply="$emit('reply', $event)"
+        />
+      </div>
+    </MoleculesCommonModal>
   </section>
 </template>
 
@@ -61,7 +72,7 @@ import { ChevronDown } from "lucide-vue-next";
 import type { TFeedback, TFeedbackReplyPayload } from "~/types/feedback.type";
 import FeedbackItem from "~/components/molecules/feedback/FeedbackItem.vue";
 
-const INITIAL_VISIBLE_COUNT = 5;
+const PREVIEW_COUNT = 5;
 
 const props = withDefaults(
   defineProps<{
@@ -93,11 +104,22 @@ defineEmits<{
   delete: [feedback: TFeedback];
 }>();
 
-const visibleCount = ref(INITIAL_VISIBLE_COUNT);
-const visibleItems = computed(() => props.items.slice(0, visibleCount.value));
-const hiddenCount = computed(() => Math.max(0, props.items.length - visibleCount.value));
+const modalRef = ref();
 
-const showMore = () => {
-  visibleCount.value += INITIAL_VISIBLE_COUNT;
+const previewItems = computed(() => props.items.slice(0, PREVIEW_COUNT));
+const hiddenCount = computed(() => Math.max(0, props.items.length - PREVIEW_COUNT));
+
+const itemBindings = (item: TFeedback) => ({
+  feedback: item,
+  currentUserId: props.currentUserId,
+  isAdmin: props.isAdmin,
+  deleteError: props.deleteErrors[String(item._id)] || "",
+  isDeleting: props.deletingId === String(item._id),
+  isReplying: props.replyingId === String(item._id),
+  replyError: props.replyErrors[String(item._id)] || "",
+});
+
+const openAllFeedback = () => {
+  modalRef.value?.openModal();
 };
 </script>

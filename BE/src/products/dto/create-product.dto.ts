@@ -13,6 +13,12 @@ export class CreateProductDto {
   @IsString()
   name: string;
 
+  // Slug SEO cho URL. Bỏ trống -> BE tự sinh từ tên (tự thêm hậu tố nếu trùng).
+  // Có nhập -> dùng đúng slug đó, trùng thì báo lỗi 409.
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
   @IsOptional()
   @IsString()
   description?: string;

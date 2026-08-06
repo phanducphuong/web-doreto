@@ -18,6 +18,9 @@ import { ContactRequestsModule } from './contact-requests/contact-requests.modul
 import { TagsModule } from './tags/tags.module';
 import { ImageFramesModule } from './image-frames/image-frames.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { TrackingModule } from './tracking/tracking.module';
+import { CrmLeadOutboxModule } from './crm-lead-outbox/crm-lead-outbox.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -42,6 +45,9 @@ import { ReportingModule } from './reporting/reporting.module';
     TagsModule,
     ImageFramesModule,
     ReportingModule,
+    TrackingModule,
+    CrmLeadOutboxModule,
+    AnalyticsModule,
   ],
   providers: [
     AppService,

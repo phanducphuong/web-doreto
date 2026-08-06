@@ -13,7 +13,7 @@
           >
             <img
               :src="Logo"
-              alt="Logo Doreto Fashion"
+              alt="Logo Doreto"
               class="block h-auto w-full"
             />
           </span>
@@ -77,7 +77,7 @@ import Logo from "~/assets/images/web-logo.png";
 
 // ! Số liệu ảo để test UI — sau này thay bằng dữ liệu thật từ API
 const shopInfo = {
-  name: "Doreto Fashion",
+  name: "Doreto",
   rating: 4.7,
   soldCount: "16,6K",
   replyRate: 98,

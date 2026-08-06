@@ -1,6 +1,7 @@
 import type { TExistedEntity } from "./base.type";
 import type { TPaginateRequest } from "./fetch.type";
 import type { TExistedProduct, TOptionValue } from "./product.type";
+import type { TTrackingUtm } from "./tracking.type";
 import type { TAddress, TUser } from "./user.type";
 
 export enum PurchaseOrderStatus {
@@ -43,6 +44,10 @@ export type TPurchaseOrder = {
   deliveriedAt?: string;
   /** BE set true sau khi user gửi feedback cho đơn này */
   isFeedbacked?: boolean;
+  // Attribution first-touch (phase 37) — optional, gửi kèm khi tạo/checkout đơn (D-05).
+  visitorId?: string;
+  camp?: string;
+  utm?: TTrackingUtm;
 };
 
 export type TExistedPurchaseOrderQueryParams = TPaginateRequest & {

@@ -71,7 +71,7 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
     buyNowItem.value ? [buyNowItem.value] : listCartProduct.value.filter(isCartItemSelected),
   );
 
-  const { $purchaseOrderRepository } = useNuxtApp();
+  const { $purchaseOrderRepository, $tracking } = useNuxtApp();
 
   // ========================
   // FETCH
@@ -109,18 +109,35 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
     try {
       loadingStates.value.upsert = true;
 
-      const method = payload._id
-        ? $purchaseOrderRepository.updateOne
-        : $purchaseOrderRepository.createOne;
+      const isUpdate = Boolean(payload._id);
+      let res: TExistedPurchaseOrder;
+      let createdNew = !isUpdate;
 
-      const res = await method(payload);
+      try {
+        res = isUpdate
+          ? await $purchaseOrderRepository.updateOne(payload)
+          : await $purchaseOrderRepository.createOne(payload);
+      } catch (error) {
+        // Giỏ trên server không còn tồn tại (BE đã bỏ upsert theo id client,
+        // vd id giỏ cũ còn sót trong localStorage) → tạo giỏ mới thay thế
+        const status =
+          (error as { statusCode?: number; status?: number })?.statusCode ??
+          (error as { status?: number })?.status;
+        if (isUpdate && status === 404) {
+          const { _id, ...rest } = payload;
+          res = await $purchaseOrderRepository.createOne(rest);
+          createdNew = true;
+        } else {
+          throw error;
+        }
+      }
 
       // update local state
-      if (payload._id) {
+      if (createdNew) {
+        purchaseOrders.value.unshift(res);
+      } else {
         const index = purchaseOrders.value.findIndex((o) => o._id === payload._id);
         if (index !== -1) purchaseOrders.value[index] = res;
-      } else {
-        purchaseOrders.value.unshift(res);
       }
 
       return res;
@@ -299,6 +316,9 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
       }
       markCartItemSelected({ product, optionValue });
 
+      // Tracking thêm giỏ (D-05) — fire-and-forget, không chặn luồng thêm giỏ.
+      $tracking?.trackEvent("add_to_cart", { productId: String(product._id) });
+
       const res = await syncCart();
       return res;
     } catch (error) {
@@ -421,12 +441,18 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
       price: item.optionValue.price || 0,
     }));
 
+    // Attribution first-touch (phase 37) — phủ cả create (guest/mua ngay) lẫn
+    // update (checkout giỏ user đăng nhập) vì cả 2 đi qua upsertOrder. Fail-safe:
+    // thiếu $tracking (SSR) → {} → BE nhận undefined → cột null, không đổi luồng đặt hàng.
+    const attribution = $tracking?.getAttribution() ?? {};
+
     const orderPayload: Partial<TExistedPurchaseOrder> = {
       userId: user.value?._id,
       purchaseItems,
       status: PurchaseOrderStatus.PENDING,
       address: params.address,
       _id: buyNowItem.value ? undefined : cartOrder.value?._id,
+      ...attribution,
     };
 
     return await upsertOrder(orderPayload);

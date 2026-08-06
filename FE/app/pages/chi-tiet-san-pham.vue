@@ -1,14 +1,14 @@
 <template>
   <div
     v-if="product"
-    class="min-w-0 -mx-4 -mt-4 pb-2.5 space-y-2.5 md:(-mx-8 -mt-8 pb-4 space-y-3) lg:(mx-0 mt-0 py-6 space-y-5)"
+    class="min-w-0 -mx-4 -mt-4 pb-2.5 space-y-2.5 md:(-mx-8 -mt-8 pb-4 space-y-3) lg:(mx-0 mt-0 pt-1 pb-6 space-y-4)"
   >
     <!-- * IMAGE GALLERY (ASYMMETRIC LAYOUT) -->
     <div
       id="product-scroll-overview"
-      class="!mt-0 grid grid-cols-1 gap-4 bg-white pb-3 md:gap-8 lg:(grid-cols-12 gap-12 p-6 rounded-xl)"
+      class="!mt-0 grid grid-cols-1 gap-4 bg-white pb-3 md:gap-8 lg:(grid-cols-12 gap-8 p-6 rounded-xl)"
     >
-      <div class="flex flex-col gap-2.5 md:gap-6 lg:col-span-7">
+      <div class="flex flex-col gap-2.5 md:gap-6 lg:col-span-5">
         <div
           ref="mobileGalleryRef"
           class="relative aspect-[4/5] bg-surface-container-low rounded-none w-full group overflow-hidden shadow-sm lg:rounded-xl"
@@ -56,7 +56,7 @@
               :key="tag._id"
               type="info"
               :label="tag.name"
-              class="!text-xs !font-bold !p-(x-3 y-0.5) sm:(!text-sm !p-(x-4 y-0.75)) lg:(!text-lg !p-(x-5 y-1))"
+              class="!text-xs !font-bold !p-(x-3 y-0.5) sm:(!text-sm !p-(x-4 y-0.75)) lg:(!text-sm !p-(x-3 y-0.5))"
             />
           </div>
 
@@ -155,11 +155,11 @@
         </template>
       </div>
 
-      <div class="flex flex-col gap-2 px-3 md:gap-6 lg:(col-span-5 gap-8 px-0)">
+      <div class="flex flex-col gap-2 px-3 md:gap-6 lg:(col-span-7 gap-5 px-0)">
         <header :class="{ 'order-1': isMobileLayout }">
           <!-- <AtomsBreadCrumb :breadcrumbs="breadcrumbs" class="mb-2 md:mb-4" /> -->
           <h1
-            class="mb-3 text-xl text-on-surface font-semibold leading-tight mt-2 md:(mt-0 mb-4 text-4xl) lg:text-5xl"
+            class="mb-3 text-xl text-on-surface font-semibold leading-tight mt-2 md:(mt-0 mb-4 text-4xl) lg:(mb-3 text-2xl)"
           >
             {{ product.name }}
           </h1>
@@ -229,7 +229,7 @@
           Đang tải gợi ý...
         </p>
       </div>
-      <div class="grid grid-cols-2 gap-1.5 sm:gap-5 lg:grid-cols-4 lg:gap-6">
+      <div class="grid grid-cols-2 gap-1.5 sm:gap-5 lg:(grid-cols-5 gap-4)">
         <MoleculesProductCard
           v-for="item in suggestProducts"
           :key="item._id"
@@ -278,21 +278,24 @@ const isMobileLayout = computed(() => !isLg.value);
 // ];
 // const { currentTab, setCurrentTab } = useTab("chi-tiet-san-pham");
 
-const { id } = route.params;
+const slug = route.params.slug as string;
 
 const { isLg } = useDeviceBreakpoint();
 
-// * FETCH PRODUCT
-const { data: product } = await useAsyncData(
-  `${route.params.slug}-I${route.params.id}`,
-  async () => {
-    const product = await $productRepository.getOne(id as string);
-    return product;
-  },
+// * FETCH PRODUCT theo slug SEO (/san-pham/:slug)
+const { data: product } = await useAsyncData(`product-${slug}`, () =>
+  $productRepository.getBySlug(slug),
 );
 
-const { data: relatedProductsData } = await useAsyncData(`related-products-${id}`, () =>
-  $productRepository.getRelatedProducts(id as string),
+// Sản phẩm tương tự tra theo id thật của SP vừa lấy (route không còn kèm id)
+const productId = computed(() => product.value?._id as string | undefined);
+const { data: relatedProductsData } = await useAsyncData(
+  `related-products-${slug}`,
+  () =>
+    productId.value
+      ? $productRepository.getRelatedProducts(productId.value)
+      : Promise.resolve([]),
+  { watch: [productId] },
 );
 const relatedProducts = computed(() => relatedProductsData.value ?? []);
 
@@ -302,6 +305,16 @@ const optionSelection = useProductOptionSelection(product);
 provide(PRODUCT_OPTION_SELECTION_KEY, optionSelection);
 
 const { activeOptionValueId, getStripLabels, selectOptionValue, selectedOption } = optionSelection;
+
+// * TRACKING: bắn event product_view mỗi khi có dữ liệu sản phẩm (chỉ client, fail-silent)
+const { trackProductView } = useTracking();
+watch(
+  () => product.value?._id,
+  (productId) => {
+    if (import.meta.client && productId) trackProductView(productId);
+  },
+  { immediate: true },
+);
 
 // * COMPUTED
 const breadcrumbs = computed(() => {
@@ -331,13 +344,13 @@ const productMetaDescription = computed(() => {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return raw || "Chi tiết sản phẩm thời trang tại Doreto.";
+  return raw || "Chi tiết sản phẩm thời trang nam tại Doreto.";
 });
 
 useSeoMeta({
   title: () => `${product.value?.name || "Chi tiết sản phẩm"} | Doreto`,
   description: () => productMetaDescription.value,
-  ogImage: () => product.value?.thumbnailUrls?.[0] || "/banner.webp",
+  ogImage: () => product.value?.thumbnailUrls?.[0] || product.value?.imageUrls?.[0] || "/banner.jpg",
 });
 
 useBreadcrumbSchema(

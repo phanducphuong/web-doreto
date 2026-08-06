@@ -4,15 +4,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { isUUID } from 'class-validator';
-import { ContactSpamKind } from '@prisma/client';
+import { ContactSpamKind, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateContactRequestDto } from './dto/create-contact-request.dto';
 import { MarkContactSpamDto } from './dto/mark-contact-spam.dto';
 import { CreateContactSpamBlockDto } from './dto/create-contact-spam-block.dto';
+import { CrmLeadOutboxService } from 'src/crm-lead-outbox/crm-lead-outbox.service';
+import { CrmLeadOutboxWorker } from 'src/crm-lead-outbox/crm-lead-outbox.worker';
+import { buildContactLeadPayload } from 'src/crm-lead-outbox/decor-lead-payload';
 
 @Injectable()
 export class ContactRequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // Outbox lead decor→CRM (plan 38-03): enqueue in-tx + bắn gần-tức-thì sau commit
+    private readonly outbox: CrmLeadOutboxService,
+    private readonly worker: CrmLeadOutboxWorker,
+  ) {}
 
   private normalizeEmail(value: string): string {
     return value.trim().toLowerCase();
@@ -44,14 +52,46 @@ export class ContactRequestsService {
   }
 
   async create(dto: CreateContactRequestDto) {
+    // Luật spam-block giữ nguyên, chạy TRƯỚC khi tạo liên hệ
     await this.assertNotSpamBlocked(dto);
-    return this.prisma.contactRequest.create({
-      data: {
-        name: dto.name,
-        phone: dto.phone,
-        email: dto.email ? this.normalizeEmail(dto.email) : dto.email,
-      },
+
+    // Bọc create + enqueue trong 1 transaction (at-least-once): liên hệ commit thì
+    // lead chắc chắn đã xếp hàng — không mất lead. enqueue chỉ là INSERT cùng tx,
+    // KHÔNG await gọi CRM ở đây.
+    const created = await this.prisma.$transaction(async (tx) => {
+      const contact = await tx.contactRequest.create({
+        data: {
+          name: dto.name,
+          phone: dto.phone,
+          email: dto.email ? this.normalizeEmail(dto.email) : dto.email,
+          // Attribution nguyên văn (D-03/D-06); thiếu = undefined = cột null (D-07)
+          visitorId: dto.visitorId,
+          camp: dto.camp,
+          utm: dto.utm
+            ? (JSON.parse(JSON.stringify(dto.utm)) as Prisma.InputJsonValue)
+            : undefined,
+        },
+      });
+
+      // sourceKind: 'contact' → CRM đặt campaignName 'Decor-Liên hệ', KHÔNG doanh thu (D-10)
+      await this.outbox.enqueue(tx, {
+        sourceKind: 'contact',
+        sourceId: contact.id,
+        payload: buildContactLeadPayload(contact, dto),
+      });
+
+      return contact;
     });
+
+    // Bắn gần-tức-thì sau commit (D-04) — non-blocking, FAIL-SAFE: lỗi worker/CRM
+    // KHÔNG bao giờ làm fail request gửi liên hệ (worker nền vẫn gửi lại).
+    try {
+      this.worker.triggerFlushSoon();
+    } catch {
+      // nuốt lỗi — liên hệ đã ghi thành công, không được ném ra khách
+    }
+
+    return created;
   }
 
   async findAllPaginated(page: number = 1, limit: number = 20, done?: boolean) {

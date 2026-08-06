@@ -73,7 +73,7 @@ const channels: TChannel[] = [
     id: "Phone-0",
     channelType: "Phone",
     label: "Gọi điện",
-    href: "tel:+84981044666",
+    href: "tel:+84981128086",
     target: "",
     iconType: "phone",
   },
@@ -84,7 +84,7 @@ const channels: TChannel[] = [
     href: "https://zalo.me/0981128086",
     target: "_blank",
     iconType: "image",
-    iconSrc: "https://phuonglinhdecor.com/wp-content/uploads/2023/04/7044033_zalo_icon.png",
+    iconSrc: "/zalo-icon.svg",
   },
 ];
 </script>

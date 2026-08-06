@@ -5,7 +5,7 @@
       :class="flush ? 'rounded-none' : 'rounded-md'"
     >
       <AtomsUiImageWithFallback
-        :src="product.thumbnailUrls?.[0]"
+        :src="product.thumbnailUrls?.[0] || product.imageUrls?.[0]"
         :alt="product.name"
         :width="200"
         :height="200"

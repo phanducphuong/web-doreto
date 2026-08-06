@@ -28,7 +28,7 @@ export default <RouterConfig>{
     },
     {
       name: "chi-tiet-san-pham",
-      path: "/san-pham/:slug-I:id",
+      path: "/san-pham/:slug",
       component: () => import("~/pages/chi-tiet-san-pham.vue"),
       meta: { layout: "layout-web" },
     },

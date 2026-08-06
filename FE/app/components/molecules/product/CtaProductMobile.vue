@@ -18,7 +18,7 @@
       class="h-11 w-11 flex-shrink-0 rounded-full overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
     >
       <img
-        src="https://phuonglinhdecor.com/wp-content/uploads/2023/04/7044033_zalo_icon.png"
+        src="/zalo-icon.svg"
         alt="Zalo"
         class="h-full w-full object-cover"
         width="44"

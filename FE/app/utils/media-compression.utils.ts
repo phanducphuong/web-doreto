@@ -1,5 +1,9 @@
 import {
   DEFAULT_UPLOAD_COMPRESSION_PRESET,
+  IMAGE_COMPRESSION_DOWNSCALE_RATIO,
+  IMAGE_COMPRESSION_MIN_WIDTH,
+  IMAGE_COMPRESSION_QUALITY_STEPS,
+  IMAGE_UPLOAD_MAX_BYTES,
   MEDIA_COMPRESSION_PRESETS,
   type TMediaCompressionOptions,
   type TMediaCompressionPreset,
@@ -7,12 +11,9 @@ import {
 
 const SKIP_MIME_TYPES = new Set(["image/gif", "image/svg+xml"]);
 
-/** JPEG tạm trên client — BE Sharp sẽ chuyển sang WebP chất lượng như Nuxt Image. */
-const CLIENT_INTERIM_JPEG_QUALITY = 0.88;
-
-function buildJpegFileName(fileName: string): string {
+function replaceExtension(fileName: string, extension: string): string {
   const baseName = fileName.replace(/\.[^/.]+$/, "").trim() || "image";
-  return `${baseName}.jpg`;
+  return `${baseName}.${extension}`;
 }
 
 function resolveCompressionOptions(
@@ -139,24 +140,50 @@ async function resizeToCanvas(
   }
 }
 
-async function canvasToJpegFile(canvas: HTMLCanvasElement, fileName: string): Promise<File | null> {
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", CLIENT_INTERIM_JPEG_QUALITY);
-  });
-
-  if (!blob) {
-    return null;
-  }
-
-  return new File([blob], buildJpegFileName(fileName), {
-    type: "image/jpeg",
-    lastModified: Date.now(),
+function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, mime, quality);
   });
 }
 
+type TEncodedImage = { blob: Blob; extension: string; mime: string };
+
 /**
- * Resize ảnh trên client để giảm băng thông upload.
- * Nén WebP chất lượng cao (như Nuxt Image) do BE Sharp xử lý.
+ * Nén canvas ở một mức quality: ưu tiên WebP (giữ được nền trong suốt, nhẹ hơn);
+ * trình duyệt không encode được WebP (Safari cũ) thì rơi về JPEG nền trắng.
+ */
+async function encodeCanvas(
+  canvas: HTMLCanvasElement,
+  quality: number,
+  whiteCanvasCache: { canvas: HTMLCanvasElement | null },
+): Promise<TEncodedImage | null> {
+  const webp = await canvasToBlob(canvas, "image/webp", quality);
+  if (webp && webp.type === "image/webp") {
+    return { blob: webp, extension: "webp", mime: "image/webp" };
+  }
+
+  if (!whiteCanvasCache.canvas) {
+    const whiteCanvas = document.createElement("canvas");
+    whiteCanvas.width = canvas.width;
+    whiteCanvas.height = canvas.height;
+    const context = whiteCanvas.getContext("2d");
+    if (!context) return null;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, whiteCanvas.width, whiteCanvas.height);
+    context.drawImage(canvas, 0, 0);
+    whiteCanvasCache.canvas = whiteCanvas;
+  }
+
+  const jpeg = await canvasToBlob(whiteCanvasCache.canvas, "image/jpeg", quality);
+  if (!jpeg) return null;
+  return { blob: jpeg, extension: "jpg", mime: "image/jpeg" };
+}
+
+/**
+ * Ảnh > 500KB: resize về maxWidth của preset rồi hạ quality từng nấc (bắt đầu
+ * 0.92 để giữ chất lượng) cho tới khi ≤ 500KB; cùng lắm mới thu nhỏ kích thước.
+ * Ảnh ≤ 500KB: GIỮ NGUYÊN, không đụng tới.
+ * Thất bại ở bước nào thì gửi file gốc — BE (sharp) sẽ nén chặn hậu.
  */
 export async function compressImageFile(
   file: File,
@@ -165,6 +192,10 @@ export async function compressImageFile(
     | TMediaCompressionOptions = DEFAULT_UPLOAD_COMPRESSION_PRESET,
 ): Promise<File> {
   if (!import.meta.client || !isCompressibleImage(file)) {
+    return file;
+  }
+
+  if (file.size <= IMAGE_UPLOAD_MAX_BYTES) {
     return file;
   }
 
@@ -177,37 +208,59 @@ export async function compressImageFile(
       return file;
     }
 
-    const { width, height } = computeTargetSize(
-      sourceSize.width,
-      sourceSize.height,
-      options.maxWidth,
-    );
+    let { width, height } = computeTargetSize(sourceSize.width, sourceSize.height, options.maxWidth);
+    let bestEffort: TEncodedImage | null = null;
 
-    if (width === sourceSize.width && height === sourceSize.height && file.type === "image/jpeg") {
-      return file;
+    while (width >= 1 && height >= 1) {
+      const canvas = await resizeToCanvas(file, width, height);
+      if (!canvas) {
+        console.warn("[media-compression] Resize failed, BE will compress:", file.name);
+        return file;
+      }
+
+      const whiteCanvasCache: { canvas: HTMLCanvasElement | null } = { canvas: null };
+
+      for (const quality of IMAGE_COMPRESSION_QUALITY_STEPS) {
+        const encoded = await encodeCanvas(canvas, quality, whiteCanvasCache);
+        if (!encoded) continue;
+
+        if (!bestEffort || encoded.blob.size < bestEffort.blob.size) {
+          bestEffort = encoded;
+        }
+
+        if (encoded.blob.size <= IMAGE_UPLOAD_MAX_BYTES) {
+          const result = new File([encoded.blob], replaceExtension(file.name, encoded.extension), {
+            type: encoded.mime,
+            lastModified: Date.now(),
+          });
+
+          if (import.meta.dev) {
+            console.info(
+              `[media-compression] ${file.name}: ${(file.size / 1024).toFixed(0)}KB → ${(result.size / 1024).toFixed(0)}KB (${canvas.width}x${canvas.height}, q=${quality}, ${encoded.extension})`,
+            );
+          }
+
+          return result;
+        }
+      }
+
+      // Hạ hết quality vẫn > 500KB → thu nhỏ kích thước rồi thử lại.
+      if (width <= IMAGE_COMPRESSION_MIN_WIDTH) break;
+      width = Math.max(IMAGE_COMPRESSION_MIN_WIDTH, Math.round(width * IMAGE_COMPRESSION_DOWNSCALE_RATIO));
+      height = Math.max(1, Math.round((sourceSize.height / sourceSize.width) * width));
     }
 
-    const canvas = await resizeToCanvas(file, width, height);
-    if (!canvas) {
-      console.warn("[media-compression] Resize failed, BE will compress:", file.name);
-      return file;
+    // Không ép được xuống 500KB (ảnh cực đặc biệt) → dùng bản nhỏ nhất đã nén được.
+    if (bestEffort && bestEffort.blob.size < file.size) {
+      return new File([bestEffort.blob], replaceExtension(file.name, bestEffort.extension), {
+        type: bestEffort.mime,
+        lastModified: Date.now(),
+      });
     }
 
-    const resized = await canvasToJpegFile(canvas, file.name);
-    if (!resized) {
-      console.warn("[media-compression] JPEG encode failed, BE will compress:", file.name);
-      return file;
-    }
-
-    if (import.meta.dev) {
-      console.info(
-        `[media-compression] ${file.name}: ${(file.size / 1024).toFixed(0)}KB → ${(resized.size / 1024).toFixed(0)}KB (${width}x${height}, interim JPEG)`,
-      );
-    }
-
-    return resized;
+    return file;
   } catch (error) {
-    console.warn("[media-compression] Client resize skipped:", file.name, error);
+    console.warn("[media-compression] Client compress skipped:", file.name, error);
     return file;
   }
 }

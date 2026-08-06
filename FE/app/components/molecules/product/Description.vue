@@ -7,9 +7,9 @@
       <div class="relative">
         <div
           ref="contentRef"
-          class="product-description relative text-base text-on-surface-variant overflow-hidden py-2"
+          class="product-description relative text-base text-on-surface-variant py-2"
           :class="{
-            'max-h-[300vh] md:max-h-screen': visuallyCollapsed,
+            'max-h-[400vh] md:max-h-[300vh] overflow-hidden': visuallyCollapsed,
             'max-h-none': !visuallyCollapsed,
           }"
           v-html="optimizedDescription"
@@ -62,7 +62,14 @@ const contentRef = ref<HTMLElement | null>(null);
 const optimizedDescription = computed(() =>
   (props.description || "")
     .replace(/<img\b(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async" ')
-    .replace(/<video\b(?![^>]*\bpreload=)/gi, '<video preload="metadata" '),
+    .replace(/<video\b(?![^>]*\bpreload=)/gi, '<video preload="metadata" ')
+    // iOS chỉ chịu phát video INLINE (không tự bung fullscreen) khi thẻ <video>
+    // có sẵn playsinline ngay trong HTML lúc trình duyệt phân tích trang.
+    // Set bằng JS sau khi parse là quá muộn -> iOS đã tự nhảy fullscreen.
+    .replace(
+      /<video\b(?![^>]*\bplaysinline)/gi,
+      "<video playsinline webkit-playsinline ",
+    ),
 );
 const isShowFullDescription = ref(false);
 const canCollapse = ref(false);
@@ -179,6 +186,9 @@ function optimizeDescriptionMedia() {
 
   container.querySelectorAll("video").forEach((video) => {
     video.preload = "metadata";
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
   });
 }
 
@@ -276,8 +286,37 @@ function enhanceVideoControls() {
       showControls();
     });
 
-    // Chạm vào video: hiện/ẩn nút điều khiển
+    // Chạm 2 lần (double-tap) để xem fullscreen. Dùng fullscreen gốc của
+    // iOS (webkitEnterFullscreen) nên có sẵn cử chỉ vuốt xuống để thoát.
+    const enterFullscreen = () => {
+      const v = video as HTMLVideoElement & {
+        webkitEnterFullscreen?: () => void;
+        webkitRequestFullscreen?: () => void;
+      };
+      // Vào fullscreen thì mở tiếng cho người xem nghe
+      video.muted = false;
+      if (typeof v.webkitEnterFullscreen === "function") v.webkitEnterFullscreen();
+      else if (typeof v.requestFullscreen === "function") v.requestFullscreen().catch(() => {});
+      else if (typeof v.webkitRequestFullscreen === "function") v.webkitRequestFullscreen();
+    };
+    // Thoát fullscreen: tắt tiếng lại để không phát tiếng khi cuộn qua
+    video.addEventListener("webkitendfullscreen", () => {
+      video.muted = true;
+    });
+    video.addEventListener("fullscreenchange", () => {
+      if (!document.fullscreenElement) video.muted = true;
+    });
+
+    // Chạm vào video: 1 lần hiện/ẩn nút điều khiển, 2 lần vào fullscreen
+    let lastTap = 0;
     wrapper.addEventListener("click", () => {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        lastTap = 0;
+        enterFullscreen();
+        return;
+      }
+      lastTap = now;
       if (wrapper.classList.contains("desc-video--idle")) showControls();
       else if (!video.paused) wrapper.classList.add("desc-video--idle");
     });
@@ -450,8 +489,9 @@ watch(
 
 /* Khoảng cách dọc mặc định giữa text và ảnh/video: ~1 dòng (chữ 16px);
    margin liền kề tự gộp nên 2 ảnh liên tiếp cũng cách nhau đúng 1 dòng */
-.product-description :deep(img:not(.desc-framed-image__photo):not(.desc-framed-image__frame)),
-.product-description :deep(.desc-framed-image) {
+.product-description :deep(img:not(.desc-framed-image__photo):not(.desc-framed-image__frame):not(.desc-image-frame__img)),
+.product-description :deep(.desc-framed-image),
+.product-description :deep(.desc-image-frame) {
   margin-block: 20px;
 }
 
@@ -462,6 +502,19 @@ watch(
   margin: 20px auto;
   border-radius: 8px;
   background: #111827;
+}
+
+/* Desktop: giới hạn chiều cao ảnh/video trong mô tả cho gọn, dễ xem; canh giữa.
+   Ảnh/video giữ nguyên tỉ lệ vì width tự co (chỉ chặn chiều cao). */
+@media (min-width: 1024px) {
+  .product-description
+    :deep(img:not(.desc-framed-image__photo):not(.desc-framed-image__frame):not(.desc-image-frame__img)),
+  .product-description :deep(video),
+  .product-description :deep(.desc-video video) {
+    max-height: 690px;
+    width: auto;
+    margin-inline: auto;
+  }
 }
 
 /* Bộ điều khiển video tự vẽ — không có lớp phủ tối */

@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-5 sm:space-y-6">
+  <div class="space-y-5 sm:space-y-6 lg:space-y-4">
     <div
       v-for="(option, optionIndex) in selectOption"
       :key="option.label"
@@ -13,7 +13,7 @@
       </div>
 
       <!-- Values dạng thẻ ảnh (kiểu TikTok Shop) — chỉ áp dụng cho option màu sắc -->
-      <div v-if="option.hasImages" class="grid grid-cols-3 gap-1.5 sm:gap-2">
+      <div v-if="option.hasImages" class="grid grid-cols-3 gap-1.5 sm:gap-2 lg:(max-w-[330px] gap-2)">
         <div v-for="value in option.values" :key="value.name" class="relative">
           <button
             :disabled="isDisabled(optionIndex, value.name)"
@@ -25,7 +25,7 @@
             "
             @click="handleCardClick(optionIndex, option, value)"
           >
-            <div class="aspect-[3/4] w-full overflow-hidden bg-surface-container-low">
+            <div class="aspect-[3/4] w-full overflow-hidden bg-surface-container-low lg:aspect-square">
               <AtomsUiImageWithFallback
                 :src="value.imageUrl"
                 :alt="value.name"
@@ -65,7 +65,7 @@
           :key="value.name"
           :disabled="isDisabled(optionIndex, value.name)"
           :class="[
-            'rounded-lg px-4 py-1.5 text-base font-semibold leading-snug transition-all cursor-pointer disabled:(opacity-40 cursor-not-allowed) sm:(px-5 py-2 text-lg)',
+            'rounded-lg px-4 py-1.5 text-base font-semibold leading-snug transition-all cursor-pointer disabled:(opacity-40 cursor-not-allowed) sm:(px-5 py-2 text-lg) lg:(px-4 py-1.5 text-base)',
             selectedMap[optionIndex] === value.name
               ? 'bg-primary/15 text-secondary ring-2 ring-primary shadow-sm'
               : 'bg-surface-container-low text-on-surface-variant ring-1 ring-outline-variant hover:(bg-primary/8 ring-primary/45 text-on-surface)',

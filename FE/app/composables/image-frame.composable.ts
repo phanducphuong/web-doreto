@@ -110,7 +110,7 @@ export default function useImageFrame() {
     }
   };
 
-  const getFrameById = async (id: number) => {
+  const getFrameById = async (id: string) => {
     try {
       loadingStates.value.getById = true;
       operationError.value = "";
@@ -142,7 +142,7 @@ export default function useImageFrame() {
     }
   };
 
-  const updateFrame = async (id: number, payload: TUpdateImageFramePayload) => {
+  const updateFrame = async (id: string, payload: TUpdateImageFramePayload) => {
     try {
       loadingStates.value.upsert = true;
       operationError.value = "";
@@ -159,7 +159,7 @@ export default function useImageFrame() {
     }
   };
 
-  const deleteFrame = async (id: number) => {
+  const deleteFrame = async (id: string) => {
     try {
       loadingStates.value.delete = true;
       operationError.value = "";

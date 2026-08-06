@@ -8,11 +8,34 @@
           'border-third-light focus-within:border-secondary focus-within:ring-1 focus-within:ring-secondary':
             !props.error,
           'bg-gray-100 cursor-not-allowed opacity-60': props.disabled,
+          'tiptap-wrapper--side': props.sideToolbar,
         },
       ]"
     >
       <div v-if="editor && !props.disabled" class="tiptap-sticky-tools">
-        <div :class="['tiptap-toolbar', { locked: isEditorLocked }]">
+        <div :class="['tiptap-toolbar', { locked: isEditorLocked, 'tiptap-toolbar--vertical': props.sideToolbar }]">
+          <!-- Toggle thiết bị (chỉ ở rail dọc): gộp Mobile/Desktop lên đầu cột -->
+          <template v-if="props.sideToolbar && props.enablePreviewWidth">
+            <AtomsTooltip content="Xem trên Mobile">
+              <button
+                type="button"
+                :class="['toolbar-btn', { active: props.previewWidth === 'mobile' }]"
+                @click="emit('update:previewWidth', 'mobile')"
+              >
+                <Smartphone class="size-4" />
+              </button>
+            </AtomsTooltip>
+            <AtomsTooltip content="Xem trên Desktop">
+              <button
+                type="button"
+                :class="['toolbar-btn', { active: props.previewWidth === 'desktop' }]"
+                @click="emit('update:previewWidth', 'desktop')"
+              >
+                <Monitor class="size-4" />
+              </button>
+            </AtomsTooltip>
+            <span class="toolbar-divider" />
+          </template>
           <AtomsTooltip content="Bold">
             <button
               type="button"
@@ -150,7 +173,7 @@
               <Video v-else class="size-4" />
             </button>
           </AtomsTooltip>
-          <MoleculesCommonPopover placement="bottom-start">
+          <MoleculesCommonPopover :placement="props.sideToolbar ? 'left-start' : 'bottom-start'">
             <AtomsTooltip content="Thêm block layout">
               <button type="button" class="toolbar-btn" :disabled="isEditorLocked">
                 <LayoutTemplate class="size-4" />
@@ -211,7 +234,7 @@
               />
             </label>
           </AtomsTooltip>
-          <MoleculesCommonPopover placement="bottom-start">
+          <MoleculesCommonPopover :placement="props.sideToolbar ? 'left-start' : 'bottom-start'">
             <button
               type="button"
               class="toolbar-btn toolbar-btn-preview"
@@ -237,7 +260,7 @@
               </div>
             </template>
           </MoleculesCommonPopover>
-          <MoleculesCommonPopover placement="bottom-start">
+          <MoleculesCommonPopover :placement="props.sideToolbar ? 'left-start' : 'bottom-start'">
             <button
               type="button"
               class="toolbar-btn toolbar-btn-preview"
@@ -276,11 +299,12 @@
             type="button"
             class="toolbar-btn toolbar-ai-btn"
             :disabled="isEditorLocked"
+            title="Generate AI"
             @click="openAiPromptModal"
           >
             <Loader2 v-if="isGeneratingAi" class="size-4 animate-spin" />
             <Sparkles v-else class="size-4" />
-            <span>{{ isGeneratingAi ? "Generating..." : "Generate AI" }}</span>
+            <span class="toolbar-ai-label">{{ isGeneratingAi ? "Generating..." : "Generate AI" }}</span>
           </button>
           <AtomsTooltip content="Undo">
             <button
@@ -304,53 +328,77 @@
           </AtomsTooltip>
         </div>
 
-        <div v-if="selectedImage && !isEditorLocked" class="desc-image-props-bar">
-          <span class="desc-image-props-label">Ảnh</span>
-
-          <button
-            type="button"
-            class="desc-image-action-btn"
-            :disabled="isUploadingImage"
-            @click="openImageReplacePicker"
-          >
-            <RefreshCw class="size-3.5" />
-            Thay ảnh
-          </button>
-
-          <div class="desc-image-align-group">
+        <div
+          v-if="selectedImage && !isEditorLocked && !isImageCropEditing"
+          ref="imageBarRef"
+          class="desc-image-props-bar desc-floating-bar"
+          :class="{ 'is-ready': floatingReady }"
+          :style="floatingBarStyle"
+        >
+          <AtomsTooltip content="Thay ảnh khác">
             <button
               type="button"
-              class="desc-image-icon-btn"
+              class="desc-toolbar-icon-btn"
+              :disabled="isUploadingImage"
+              @click="openImageReplacePicker"
+            >
+              <RefreshCw class="size-4" />
+            </button>
+          </AtomsTooltip>
+
+          <AtomsTooltip content="Cắt ảnh">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              :disabled="isUploadingImage"
+              @click="cropSelectedImage"
+            >
+              <Crop class="size-4" />
+            </button>
+          </AtomsTooltip>
+
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip content="Căn trái">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
               :class="{ active: isImageAlignActive('left') }"
               @click="setImageAlign('left')"
             >
-              <AlignLeft class="size-3.5" />
+              <AlignLeft class="size-4" />
             </button>
+          </AtomsTooltip>
+          <AtomsTooltip content="Căn giữa">
             <button
               type="button"
-              class="desc-image-icon-btn"
+              class="desc-toolbar-icon-btn"
               :class="{ active: isImageAlignActive('center') }"
               @click="setImageAlign('center')"
             >
-              <AlignCenter class="size-3.5" />
+              <AlignCenter class="size-4" />
             </button>
+          </AtomsTooltip>
+          <AtomsTooltip content="Căn phải">
             <button
               type="button"
-              class="desc-image-icon-btn"
+              class="desc-toolbar-icon-btn"
               :class="{ active: isImageAlignActive('right') }"
               @click="setImageAlign('right')"
             >
-              <AlignRight class="size-3.5" />
+              <AlignRight class="size-4" />
             </button>
-          </div>
+          </AtomsTooltip>
 
-          <label class="desc-image-props-field">
-            <span>Chiều rộng</span>
-            <span class="desc-block-number-control">
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip content="Chiều rộng ảnh (%)">
+            <span class="desc-toolbar-num">
+              <MoveHorizontal class="size-3.5 desc-toolbar-num-icon" />
               <input
                 :key="`image-width-${selectedImage.pos}`"
                 type="number"
-                class="desc-block-number-input"
+                class="desc-toolbar-num-input"
                 min="10"
                 max="100"
                 step="1"
@@ -358,31 +406,28 @@
                 @input="onImageWidthInput"
                 @change="onImageWidthInput"
               />
-              <span class="desc-block-unit">%</span>
             </span>
-          </label>
+          </AtomsTooltip>
 
-          <label class="desc-image-props-field">
-            <span>Bo góc</span>
-            <span class="desc-block-number-control">
+          <AtomsTooltip content="Bo góc ảnh (px)">
+            <span class="desc-toolbar-num">
+              <SquareRoundCorner class="size-3.5 desc-toolbar-num-icon" />
               <input
                 :key="`image-radius-${selectedImage.pos}`"
                 type="number"
-                class="desc-block-number-input"
+                class="desc-toolbar-num-input"
                 min="0"
                 step="1"
                 :value="selectedImageRadiusPx"
                 @input="onImageRadiusInput"
                 @change="onImageRadiusInput"
               />
-              <span class="desc-block-unit">px</span>
             </span>
-          </label>
+          </AtomsTooltip>
 
-          <label class="desc-image-props-field">
-            <span>Bóng</span>
+          <AtomsTooltip content="Bóng đổ">
             <select
-              class="desc-image-shadow-select"
+              class="desc-toolbar-select"
               :value="selectedImage.attrs.imageShadow || 'none'"
               @change="onImageShadowChange"
             >
@@ -390,82 +435,226 @@
                 {{ item.label }}
               </option>
             </select>
-          </label>
+          </AtomsTooltip>
 
-          <button type="button" class="desc-block-delete-btn" @click="deleteSelectedImage">
-            <Trash2 class="size-3.5" />
-            Xóa ảnh
-          </button>
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip content="Xóa ảnh">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn is-danger"
+              @click="deleteSelectedImage"
+            >
+              <Trash2 class="size-4" />
+            </button>
+          </AtomsTooltip>
         </div>
 
         <div
           v-if="selectedDescBlock && !selectedImage && !isEditorLocked"
-          class="desc-block-props-bar"
+          ref="blockBarRef"
+          class="desc-block-props-bar desc-floating-bar"
+          :class="{ 'is-ready': floatingReady }"
+          :style="floatingBarStyle"
         >
-          <span class="desc-block-props-label">
-            Block {{ selectedDescBlock.attrs.width === "half" ? "1/2" : "full" }}
+          <span class="desc-toolbar-badge">
+            {{ selectedDescBlock.attrs.width === "half" ? "½" : "full" }}
           </span>
 
-          <label class="desc-block-props-field">
-            <span>Màu nền</span>
-            <span class="desc-block-color-control">
-              <input
-                type="color"
-                class="desc-block-color-input"
-                :value="selectedDescBlock.attrs.backgroundColor || '#ffffff'"
-                @input="onDescBlockBackgroundInput"
-              />
-              <button
-                type="button"
-                class="desc-block-clear-btn"
-                @click="updateSelectedDescBlock({ backgroundColor: null })"
-              >
-                Xóa
-              </button>
-            </span>
-          </label>
+          <span class="desc-toolbar-divider" />
 
-          <label class="desc-block-props-field">
-            <span>Bo góc</span>
-            <span class="desc-block-number-control">
+          <AtomsTooltip content="Di chuyển lên">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              :disabled="!descBlockMoveInfo.canUp"
+              @click="moveSelectedDescBlock(-1)"
+            >
+              <ArrowUp class="size-4" />
+            </button>
+          </AtomsTooltip>
+          <AtomsTooltip content="Di chuyển xuống">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              :disabled="!descBlockMoveInfo.canDown"
+              @click="moveSelectedDescBlock(1)"
+            >
+              <ArrowDown class="size-4" />
+            </button>
+          </AtomsTooltip>
+          <AtomsTooltip content="Căn giữa block">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              :class="{ active: selectedDescBlock.attrs.align === 'center' }"
+              @click="toggleDescBlockCenter"
+            >
+              <AlignCenter class="size-4" />
+            </button>
+          </AtomsTooltip>
+
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip content="Màu đầu">
+            <input
+              type="color"
+              class="desc-block-color-input"
+              :value="selectedDescBlockGradient.from"
+              @input="onDescBlockGradientColorLive('from', $event)"
+              @change="onDescBlockGradientColorInput('from', $event)"
+            />
+          </AtomsTooltip>
+          <AtomsTooltip content="Màu cuối">
+            <input
+              type="color"
+              class="desc-block-color-input"
+              :value="selectedDescBlockGradient.to"
+              @input="onDescBlockGradientColorLive('to', $event)"
+              @change="onDescBlockGradientColorInput('to', $event)"
+            />
+          </AtomsTooltip>
+          <AtomsTooltip content="Hướng pha màu">
+            <select
+              class="desc-block-bg-angle"
+              :value="selectedDescBlockGradient.angle"
+              @change="onDescBlockGradientAngleChange"
+            >
+              <option
+                v-for="item in DESC_BLOCK_GRADIENT_ANGLES"
+                :key="item.value"
+                :value="item.value"
+              >
+                {{ item.label }}
+              </option>
+            </select>
+          </AtomsTooltip>
+
+          <AtomsTooltip content="Bỏ màu nền">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              @click="updateSelectedDescBlock({ backgroundColor: null })"
+            >
+              <Ban class="size-4" />
+            </button>
+          </AtomsTooltip>
+
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip content="Chiều rộng block (%)">
+            <span class="desc-toolbar-num">
+              <MoveHorizontal class="size-3.5 desc-toolbar-num-icon" />
+              <input
+                :key="`bw-${selectedDescBlock.pos}`"
+                type="number"
+                class="desc-toolbar-num-input"
+                min="10"
+                max="100"
+                step="1"
+                :value="selectedDescBlockWidthPct"
+                @input="onDescBlockWidthInput"
+                @change="onDescBlockWidthInput"
+              />
+            </span>
+          </AtomsTooltip>
+
+          <AtomsTooltip content="Chiều cao tối thiểu (px)">
+            <span class="desc-toolbar-num">
+              <MoveVertical class="size-3.5 desc-toolbar-num-icon" />
+              <input
+                :key="`bh-${selectedDescBlock.pos}`"
+                type="number"
+                class="desc-toolbar-num-input"
+                min="0"
+                step="1"
+                :value="selectedDescBlockMinHeightPx"
+                @input="onDescBlockMinHeightInput"
+                @change="onDescBlockMinHeightInput"
+              />
+            </span>
+          </AtomsTooltip>
+
+          <AtomsTooltip content="Bo góc (px)">
+            <span class="desc-toolbar-num">
+              <SquareRoundCorner class="size-3.5 desc-toolbar-num-icon" />
               <input
                 :key="`radius-${selectedDescBlock.pos}`"
                 type="number"
-                class="desc-block-number-input"
+                class="desc-toolbar-num-input"
                 min="0"
                 step="1"
                 :value="selectedDescBlockRadiusPx"
                 @input="onDescBlockRadiusInput"
                 @change="onDescBlockRadiusInput"
               />
-              <span class="desc-block-unit">px</span>
             </span>
-          </label>
+          </AtomsTooltip>
 
-          <label class="desc-block-props-field">
-            <span>Padding</span>
-            <span class="desc-block-number-control">
+          <AtomsTooltip content="Khoảng đệm trong (px)">
+            <span class="desc-toolbar-num">
+              <Frame class="size-3.5 desc-toolbar-num-icon" />
               <input
                 :key="`padding-${selectedDescBlock.pos}`"
                 type="number"
-                class="desc-block-number-input"
+                class="desc-toolbar-num-input"
                 min="0"
                 step="1"
                 :value="selectedDescBlockPaddingPx"
                 @input="onDescBlockPaddingInput"
                 @change="onDescBlockPaddingInput"
               />
-              <span class="desc-block-unit">px</span>
             </span>
-          </label>
+          </AtomsTooltip>
 
-          <button type="button" class="desc-block-delete-btn" @click="deleteSelectedDescBlock">
-            <Trash2 class="size-3.5" />
-            Xóa block
-          </button>
+          <AtomsTooltip content="Bóng đổ">
+            <select
+              class="desc-toolbar-select"
+              :value="selectedDescBlock.attrs.shadow || 'none'"
+              @change="onDescBlockShadowChange"
+            >
+              <option v-for="item in descBlockShadowOptions" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </AtomsTooltip>
+
+          <span class="desc-toolbar-divider" />
+
+          <AtomsTooltip
+            v-if="selectedDescBlock.attrs.blockWidth || selectedDescBlock.attrs.minHeight"
+            content="Về cỡ mặc định"
+          >
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn"
+              @click="resetSelectedDescBlockSize"
+            >
+              <RotateCcw class="size-4" />
+            </button>
+          </AtomsTooltip>
+
+          <AtomsTooltip content="Xóa block">
+            <button
+              type="button"
+              class="desc-toolbar-icon-btn is-danger"
+              @click="deleteSelectedDescBlock"
+            >
+              <Trash2 class="size-4" />
+            </button>
+          </AtomsTooltip>
         </div>
       </div>
-      <EditorContent :editor="editor" />
+      <div
+        ref="contentAreaRef"
+        :class="['tiptap-content-area', { 'is-framed': props.enablePreviewWidth }]"
+        :data-preview="props.enablePreviewWidth ? props.previewWidth : undefined"
+        @mousedown="onEditorAreaMouseDown"
+      >
+        <div class="tiptap-content-frame" :style="contentFrameStyle">
+          <EditorContent :editor="editor" />
+        </div>
+      </div>
     </div>
   </ClientOnly>
 
@@ -536,7 +725,11 @@ import {
   createHalfDescBlockContent,
   parseCssPx,
   toCssPx,
+  isGradientValue,
+  parseGradientValue,
+  buildGradientValue,
   type TDescBlockAttrs,
+  type TDescBlockShadow,
 } from "~/utils/tiptap-desc-block.extension";
 import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import { FontFamily } from "@tiptap/extension-text-style/font-family";
@@ -566,6 +759,17 @@ import {
   Trash2,
   RefreshCw,
   Video,
+  Crop,
+  MoveHorizontal,
+  MoveVertical,
+  SquareRoundCorner,
+  Frame,
+  RotateCcw,
+  Ban,
+  Smartphone,
+  Monitor,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-vue-next";
 
 const props = withDefaults(
@@ -578,6 +782,17 @@ const props = withDefaults(
     aiCategoryNames?: string[];
     aiTagNames?: string[];
     aiReplaceContent?: boolean;
+    // Nếu truyền: bấm chèn/thay ảnh sẽ mở popup chọn ảnh từ kho ảnh sản phẩm
+    // (trả URL ảnh có sẵn để chèn thẳng, hoặc File mới để crop+upload như cũ).
+    // Bỏ trống: giữ hành vi cũ (mở hộp chọn file của trình duyệt).
+    pickProductImage?: () => Promise<{ url?: string; file?: File } | null>;
+    // Bật khung xem trước theo thiết bị (thu khung soạn về đúng bề ngang thiết bị)
+    enablePreviewWidth?: boolean;
+    // Bề ngang xem trước, do component cha điều khiển (nút Mobile/Desktop ở header)
+    previewWidth?: "mobile" | "desktop";
+    // Xếp thanh công cụ + toggle thiết bị thành cột dọc bên phải (dùng cho popup rộng)
+    // -> nhường tối đa chiều dọc cho vùng xem trước.
+    sideToolbar?: boolean;
   }>(),
   {
     modelValue: "",
@@ -587,19 +802,32 @@ const props = withDefaults(
     aiCategoryNames: () => [],
     aiTagNames: () => [],
     aiReplaceContent: false,
+    enablePreviewWidth: false,
+    previewWidth: "mobile",
+    sideToolbar: false,
   },
 );
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: string): void;
+  (e: "update:previewWidth", value: "mobile" | "desktop"): void;
 }>();
+
+// Xem trước theo thiết bị (nút Mobile/Desktop nằm ở header, cha truyền xuống qua prop)
+// mobile 414px: cỡ điện thoại phổ biến (iPhone 11/XR/Plus...), sát thực tế hơn 390px
+const PREVIEW_WIDTHS = { mobile: 414, desktop: 820 } as const;
+const contentFrameStyle = computed(() => {
+  if (!props.enablePreviewWidth) return {};
+  return { maxWidth: `${PREVIEW_WIDTHS[props.previewWidth]}px`, margin: "0 auto" };
+});
 
 const { $api } = useNuxtApp();
 const toast = useToast();
 const { uploadFiles } = useUploadFiles();
 const imageInputRef = ref<HTMLInputElement | null>(null);
 const videoInputRef = ref<HTMLInputElement | null>(null);
-const imageCropModalRef = ref<{ open: (file: File) => Promise<File | null> }>();
+const imageCropModalRef =
+  ref<{ open: (source: File | string, options?: { aspectRatio?: number }) => Promise<File | null> }>();
 const videoUploadModalRef = ref<{ open: (file: File) => Promise<string | null> }>();
 const imageUploadMode = ref<"insert" | "replace">("insert");
 const aiPromptModalRef = ref();
@@ -653,6 +881,41 @@ const selectedDescBlockPaddingPx = computed(() =>
   selectedDescBlock.value ? parseCssPx(selectedDescBlock.value.attrs.padding, 12) : 0,
 );
 
+const selectedDescBlockWidthPct = computed(() => {
+  const raw = selectedDescBlock.value?.attrs.blockWidth;
+  if (!raw) return 100;
+  const match = String(raw).trim().match(/^(\d+(?:\.\d+)?)%$/);
+  return match ? Math.round(Number(match[1])) : 100;
+});
+
+const selectedDescBlockMinHeightPx = computed(() =>
+  selectedDescBlock.value?.attrs.minHeight
+    ? parseCssPx(selectedDescBlock.value.attrs.minHeight, 0)
+    : 0,
+);
+
+// Màu nền block: "solid" (1 màu) hoặc "gradient" (2 màu pha nhau)
+const DESC_BLOCK_GRADIENT_ANGLES = [
+  { label: "↓", value: 180 },
+  { label: "↑", value: 0 },
+  { label: "→", value: 90 },
+  { label: "←", value: 270 },
+  { label: "↘", value: 135 },
+  { label: "↙", value: 225 },
+] as const;
+
+const selectedDescBlockBg = computed(() => selectedDescBlock.value?.attrs.backgroundColor ?? null);
+
+// Luôn quy về gradient 2 màu. Block cũ đang là màu đơn -> tách thành from=to (giữ nguyên
+// diện mạo cho tới khi user đổi 1 trong 2 màu); không có nền -> dùng gradient mặc định.
+const selectedDescBlockGradient = computed(() => {
+  const bg = selectedDescBlockBg.value;
+  const parsed = parseGradientValue(bg);
+  if (parsed) return parsed;
+  if (bg && !isGradientValue(bg)) return { from: bg, to: bg, angle: 180 };
+  return { from: "#f7f4f3", to: "#ece3dd", angle: 180 };
+});
+
 const selectedImagePos = ref<number | null>(null);
 const selectedImageAttrs = ref<TDescImageAttrs | null>(null);
 
@@ -664,6 +927,156 @@ const selectedImage = computed(() => {
   };
 });
 
+// ===== Thanh công cụ nổi: bám ngay cạnh ảnh/block đang chọn (giống WebCake) =====
+const contentAreaRef = ref<HTMLElement | null>(null);
+
+// Đang cắt ảnh tại chỗ -> ẩn thanh công cụ ảnh nổi để không đè lên nút "Xong cắt ảnh"
+const isImageCropEditing = ref(false);
+const onImageCropEditing = (event: Event) => {
+  isImageCropEditing.value = Boolean((event as CustomEvent).detail?.editing);
+};
+// Bỏ chọn ảnh (kể cả xóa ảnh giữa lúc cắt) -> gỡ trạng thái đang-cắt cho chắc
+watch(selectedImage, (img) => {
+  if (!img) isImageCropEditing.value = false;
+});
+const imageBarRef = ref<HTMLElement | null>(null);
+const blockBarRef = ref<HTMLElement | null>(null);
+const floatingBarStyle = ref<Record<string, string>>({ top: "0px", left: "0px" });
+const floatingReady = ref(false);
+
+const updateFloatingBar = () => {
+  const instance = editor.value;
+  if (!instance) return;
+
+  let pos: number | null = null;
+  let barEl: HTMLElement | null = null;
+  if (selectedImage.value) {
+    pos = selectedImagePos.value;
+    barEl = imageBarRef.value;
+  } else if (selectedDescBlock.value) {
+    pos = selectedDescBlockPos.value;
+    barEl = blockBarRef.value;
+  }
+  if (pos === null || !barEl) {
+    floatingReady.value = false;
+    return;
+  }
+
+  // Lấy DOM của node đang chọn để đo vị trí
+  let node: Node | null = null;
+  try {
+    node = instance.view.nodeDOM(pos) as Node | null;
+  } catch {
+    node = null;
+  }
+  const el =
+    node && node.nodeType === 1 ? (node as HTMLElement) : (node?.parentElement ?? null);
+  if (!el || typeof el.getBoundingClientRect !== "function") return;
+
+  const rect = el.getBoundingClientRect();
+  const container = contentAreaRef.value;
+  const cRect = container ? container.getBoundingClientRect() : null;
+
+  const barW = barEl.offsetWidth || 0;
+  const barH = barEl.offsetHeight || 0;
+  const gap = 4;
+  const pad = 4;
+
+  // Thanh dính CỨNG ngay trên đỉnh ảnh/block, cuộn cùng ảnh, không lật xuống.
+  const top = rect.top - barH - gap;
+
+  // Kẹp theo bề ngang KHUNG SOẠN (không phải cả màn hình) để không tràn ra ngoài.
+  const areaLeft = cRect ? cRect.left : 0;
+  const areaRight = cRect ? cRect.right : window.innerWidth;
+  const areaWidth = areaRight - areaLeft;
+  let left = rect.left;
+  const maxLeft = areaRight - barW - pad;
+  const minLeft = areaLeft + pad;
+  if (left > maxLeft) left = maxLeft;
+  if (left < minLeft) left = minLeft;
+
+  // Kéo/cuộn quá: ảnh ra khỏi vùng soạn -> thanh chìm theo ảnh (ẩn), không nhảy chỗ.
+  if (cRect && (top < cRect.top - 1 || rect.top > cRect.bottom)) {
+    floatingReady.value = false;
+    return;
+  }
+
+  floatingBarStyle.value = {
+    top: `${Math.round(top)}px`,
+    left: `${Math.round(left)}px`,
+    maxWidth: `${Math.round(areaWidth - pad * 2)}px`,
+  };
+  floatingReady.value = true;
+};
+
+let floatingRaf = 0;
+const scheduleFloatingUpdate = () => {
+  if (!import.meta.client) return;
+  if (floatingRaf) cancelAnimationFrame(floatingRaf);
+  floatingRaf = requestAnimationFrame(() => {
+    floatingRaf = 0;
+    updateFloatingBar();
+  });
+};
+
+// Cập nhật vị trí khi đổi lựa chọn / thuộc tính (kéo resize, đổi màu...)
+watch([selectedImage, selectedDescBlock], () => scheduleFloatingUpdate(), { deep: true });
+
+let floatingResizeObserver: ResizeObserver | null = null;
+const onFloatingScrollOrResize = () => scheduleFloatingUpdate();
+
+onMounted(() => {
+  if (!import.meta.client) return;
+  // capture=true để bắt cả cuộn của khung soạn (khi bật xem trước có scroll riêng)
+  window.addEventListener("scroll", onFloatingScrollOrResize, true);
+  window.addEventListener("resize", onFloatingScrollOrResize);
+  if (contentAreaRef.value && "ResizeObserver" in window) {
+    floatingResizeObserver = new ResizeObserver(() => scheduleFloatingUpdate());
+    floatingResizeObserver.observe(contentAreaRef.value);
+  }
+  // Sự kiện tùy chỉnh (có gạch nối) nên gắn tay để tránh lỗi casing của @ trên thẻ native
+  contentAreaRef.value?.addEventListener("desc-image-crop-editing", onImageCropEditing);
+});
+
+// Bỏ chọn ảnh/block hoàn toàn (ẩn thanh nổi) - dùng khi bấm ra vùng trắng
+const clearDescSelection = () => {
+  const instance = editor.value;
+  if (instance) {
+    const sel = instance.state.selection;
+    // Đưa NodeSelection (ảnh/block) về con trỏ text để bỏ viền chọn, rồi bỏ focus.
+    if (sel instanceof NodeSelection) {
+      instance.chain().setTextSelection(sel.from).run();
+    }
+    instance.commands.blur();
+  }
+  selectedImagePos.value = null;
+  selectedImageAttrs.value = null;
+  selectedDescBlockPos.value = null;
+  selectedDescBlockAttrs.value = null;
+  floatingReady.value = false;
+};
+
+// Bấm vào vùng trắng 2 bên (ngoài ảnh/chữ) -> bỏ chọn ảnh/block
+const onEditorAreaMouseDown = (event: MouseEvent) => {
+  if (!(selectedImage.value || selectedDescBlock.value)) return;
+  const target = event.target as HTMLElement | null;
+  if (!target || typeof target.closest !== "function") return;
+  // Đang thao tác trên thanh nổi hoặc kéo tay cầm -> giữ nguyên
+  if (target.closest(".desc-floating-bar") || target.closest(".desc-block-handle")) return;
+
+  if (selectedImage.value) {
+    // Đang chọn ảnh: chỉ giữ khi bấm trúng đúng ảnh/video; vùng trắng quanh ảnh -> bỏ chọn
+    if (target.closest("img, video")) return;
+    clearDescSelection();
+    return;
+  }
+
+  // Đang chọn block (con trỏ trong block): bấm vào nội dung editor thì để ProseMirror
+  // tự xử lý (gõ chữ / chuyển block); chỉ bỏ chọn khi bấm ra vùng trắng ngoài nội dung.
+  if (target.closest(".ProseMirror")) return;
+  clearDescSelection();
+};
+
 const selectedImageWidthPercent = computed(() =>
   selectedImage.value ? parseImageWidthPercent(selectedImage.value.attrs.imageWidth, 100) : 100,
 );
@@ -671,6 +1084,7 @@ const selectedImageWidthPercent = computed(() =>
 const selectedImageRadiusPx = computed(() =>
   selectedImage.value ? parseCssPx(selectedImage.value.attrs.borderRadius, 0) : 0,
 );
+
 
 const imageShadowOptions: { label: string; value: TImageShadowPreset | "none" }[] = [
   { label: "Không", value: "none" },
@@ -758,8 +1172,97 @@ const updateSelectedDescBlock = (patch: Partial<TDescBlockAttrs>) => {
   selectedDescBlockAttrs.value = nextAttrs;
 };
 
-const onDescBlockBackgroundInput = (event: Event) => {
-  updateSelectedDescBlock({ backgroundColor: (event.target as HTMLInputElement).value });
+// Cập nhật nền block NGAY khi đang kéo màu trong bộ chọn (để preview sống).
+// Không focus lại editor (tránh làm đóng bộ chọn màu native) và không ghi từng
+// bước kéo vào lịch sử undo. Bước chốt cuối sẽ do @change (updateSelectedDescBlock) lo.
+const setDescBlockBackgroundLive = (backgroundColor: string) => {
+  const instance = editor.value;
+  const pos = selectedDescBlockPos.value;
+  if (!instance || pos === null || !selectedDescBlockAttrs.value) return;
+  const node = instance.state.doc.nodeAt(pos);
+  if (!node || node.type.name !== "descBlock") return;
+  const nextAttrs = { ...selectedDescBlockAttrs.value, backgroundColor };
+  const tr = instance.state.tr.setNodeMarkup(pos, undefined, nextAttrs);
+  tr.setMeta("addToHistory", false);
+  instance.view.dispatch(tr);
+  selectedDescBlockAttrs.value = nextAttrs;
+};
+
+// Đổi một trong hai màu của gradient (bản LIVE: gọi liên tục khi kéo trong bộ chọn màu)
+const onDescBlockGradientColorLive = (which: "from" | "to", event: Event) => {
+  const value = (event.target as HTMLInputElement).value;
+  const next = { ...selectedDescBlockGradient.value, [which]: value };
+  setDescBlockBackgroundLive(buildGradientValue(next));
+};
+
+// Đổi một trong hai màu của gradient (bản CHỐT: khi đóng bộ chọn màu -> ghi undo 1 bước)
+const onDescBlockGradientColorInput = (which: "from" | "to", event: Event) => {
+  const value = (event.target as HTMLInputElement).value;
+  const next = { ...selectedDescBlockGradient.value, [which]: value };
+  updateSelectedDescBlock({ backgroundColor: buildGradientValue(next) });
+};
+
+// Số thứ tự trong cha -> biết block có thể lên/xuống được không (để bật/tắt nút)
+const descBlockMoveInfo = computed(() => {
+  const instance = editor.value;
+  const pos = selectedDescBlockPos.value;
+  if (!instance || pos === null) return { canUp: false, canDown: false };
+  try {
+    const $pos = instance.state.doc.resolve(pos);
+    const index = $pos.index();
+    return { canUp: index > 0, canDown: index < $pos.parent.childCount - 1 };
+  } catch {
+    return { canUp: false, canDown: false };
+  }
+});
+
+// Di chuyển block lên (-1) / xuống (+1) trong cùng nhóm cha bằng transaction ProseMirror.
+const moveSelectedDescBlock = (dir: -1 | 1) => {
+  const instance = editor.value;
+  const pos = selectedDescBlockPos.value;
+  if (!instance || pos === null) return;
+  const { state } = instance;
+  const $pos = state.doc.resolve(pos);
+  const parent = $pos.parent;
+  const index = $pos.index();
+  const targetIndex = index + dir;
+  if (targetIndex < 0 || targetIndex >= parent.childCount) return; // đã ở đầu/cuối
+  const node = state.doc.nodeAt(pos);
+  if (!node || node.type.name !== "descBlock") return;
+
+  const tr = state.tr;
+  tr.delete(pos, pos + node.nodeSize);
+  // Sau khi xoá, block liền kề đã dịch chỗ; tính vị trí chèn mới.
+  const newPos =
+    dir === 1 ? pos + parent.child(index + 1).nodeSize : pos - parent.child(index - 1).nodeSize;
+  tr.insert(newPos, node);
+  tr.setSelection(NodeSelection.create(tr.doc, newPos));
+  instance.view.dispatch(tr.scrollIntoView());
+};
+
+// Bật/tắt căn giữa block (align: left <-> center)
+const toggleDescBlockCenter = () => {
+  const cur = selectedDescBlockAttrs.value?.align;
+  updateSelectedDescBlock({ align: cur === "center" ? "left" : "center" });
+};
+
+const descBlockShadowOptions: { label: string; value: TDescBlockShadow }[] = [
+  { label: "Không", value: "none" },
+  { label: "Nhẹ", value: "sm" },
+  { label: "Vừa", value: "md" },
+  { label: "Đậm", value: "lg" },
+];
+
+const onDescBlockShadowChange = (event: Event) => {
+  const value = (event.target as HTMLSelectElement).value as TDescBlockShadow;
+  updateSelectedDescBlock({ shadow: value });
+};
+
+// Đổi hướng (góc) gradient
+const onDescBlockGradientAngleChange = (event: Event) => {
+  const angle = Number((event.target as HTMLSelectElement).value);
+  const next = { ...selectedDescBlockGradient.value, angle };
+  updateSelectedDescBlock({ backgroundColor: buildGradientValue(next) });
 };
 
 const onDescBlockRadiusInput = (event: Event) => {
@@ -774,9 +1277,52 @@ const onDescBlockPaddingInput = (event: Event) => {
   updateSelectedDescBlock({ padding: toCssPx(Number(raw)) });
 };
 
+const onDescBlockWidthInput = (event: Event) => {
+  const raw = (event.target as HTMLInputElement).value;
+  if (raw === "") return;
+  const pct = Math.min(100, Math.max(10, Number(raw)));
+  updateSelectedDescBlock({ blockWidth: `${pct}%` });
+};
+
+const onDescBlockMinHeightInput = (event: Event) => {
+  const raw = (event.target as HTMLInputElement).value;
+  if (raw === "") return;
+  const px = Math.max(0, Number(raw));
+  updateSelectedDescBlock({ minHeight: px > 0 ? toCssPx(px) : null });
+};
+
+const resetSelectedDescBlockSize = () => {
+  updateSelectedDescBlock({ blockWidth: null, minHeight: null });
+};
+
 const deleteSelectedDescBlock = () => {
-  if (!editor.value || selectedDescBlockPos.value === null) return;
-  editor.value.chain().setNodeSelection(selectedDescBlockPos.value).deleteSelection().run();
+  const instance = editor.value;
+  if (!instance || selectedDescBlockPos.value === null) return;
+
+  const { state } = instance;
+  const pos = selectedDescBlockPos.value;
+  const node = state.doc.nodeAt(pos);
+  if (!node || node.type.name !== "descBlock") {
+    selectedDescBlockPos.value = null;
+    selectedDescBlockAttrs.value = null;
+    return;
+  }
+
+  let from = pos;
+  let to = pos + node.nodeSize;
+
+  // Nếu block nằm trong hàng 2 cột và là block cuối cùng còn lại -> xóa cả hàng
+  // (hàng không được rỗng nên nếu chỉ xóa block sẽ bị kẹt, không xóa sạch được)
+  const $pos = state.doc.resolve(pos);
+  const parent = $pos.parent;
+  if (parent.type.name === "descBlockRow" && parent.childCount <= 1) {
+    from = $pos.before($pos.depth);
+    to = from + parent.nodeSize;
+  }
+
+  instance.chain().focus().deleteRange({ from, to }).run();
+  selectedDescBlockPos.value = null;
+  selectedDescBlockAttrs.value = null;
   syncSelectedDescBlock();
 };
 
@@ -817,6 +1363,17 @@ const onImageShadowChange = (event: Event) => {
   updateSelectedImage({ imageShadow: value === "none" ? null : value });
 };
 
+// Nút "Cắt ảnh": vào chế độ cắt tại chỗ (phóng to, hiện full ảnh, kéo/zoom)
+const cropSelectedImage = () => {
+  if (props.disabled || !editor.value) return;
+  const el = editor.value.view.dom.querySelector(
+    ".desc-image-node-view.ProseMirror-selectednode",
+  );
+  el?.dispatchEvent(new CustomEvent("desc-image-crop-start"));
+};
+
+// (Đã bỏ crop bằng popup khi đúp ảnh — giờ crop tại chỗ ngay trong node view.)
+
 const deleteSelectedImage = () => {
   if (!editor.value) return;
   if (selectedImagePos.value !== null) {
@@ -847,6 +1404,10 @@ const TextAlign = Extension.create({
     ];
   },
 });
+
+// HTML mới nhất mà editor tự phát ra (đã sanitize). Dùng để nhận biết "echo" của
+// chính mình trong watch(modelValue) -> KHÔNG setContent lại (tránh dựng lại node view).
+const lastEmittedHtml = ref("");
 
 const sanitizeHtmlBeforeEmit = (html: string): string => {
   if (!import.meta.client || !html) return html;
@@ -890,7 +1451,9 @@ const editor = useEditor({
     syncSelectedImage();
   },
   onUpdate: ({ editor: editorInstance }) => {
-    emit("update:modelValue", sanitizeHtmlBeforeEmit(editorInstance.getHTML()));
+    const html = sanitizeHtmlBeforeEmit(editorInstance.getHTML());
+    lastEmittedHtml.value = html;
+    emit("update:modelValue", html);
     syncSelectedDescBlock();
     syncSelectedImage();
   },
@@ -979,24 +1542,20 @@ const setFontFamily = (value: string) => {
   (editor.value.chain().focus() as any).setFontFamily(value).run();
 };
 
-const openImagePicker = () => {
-  if (isUploadingImage.value || isUploadingVideo.value) return;
-  imageUploadMode.value = "insert";
-  imageInputRef.value?.click();
+// Chèn/thay ảnh vào editor bằng URL đã có (không upload lại).
+const applyImageUrlToEditor = (src: string, alt: string, shouldReplace: boolean) => {
+  if (!editor.value) return;
+  if (shouldReplace) {
+    (editor.value.chain().focus() as any).updateAttributes("image", { src, alt }).run();
+    syncSelectedImage();
+  } else {
+    (editor.value.chain().focus() as any).setImage({ src, alt }).run();
+  }
 };
 
-const openImageReplacePicker = () => {
-  if (isUploadingImage.value || isUploadingVideo.value) return;
-  imageUploadMode.value = "replace";
-  imageInputRef.value?.click();
-};
-
-const onImageSelected = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  target.value = "";
-
-  if (!file || !editor.value || !imageCropModalRef.value) return;
+// Crop + upload 1 file rồi chèn/thay vào editor (luồng cũ, tách ra để dùng lại).
+const processImageFile = async (file: File, mode: "insert" | "replace") => {
+  if (!editor.value || !imageCropModalRef.value) return;
   if (!file.type.startsWith("image/")) {
     toast.error({ message: "Vui lòng chọn file ảnh hợp lệ." });
     return;
@@ -1005,30 +1564,52 @@ const onImageSelected = async (event: Event) => {
   const croppedFile = await imageCropModalRef.value.open(file);
   if (!croppedFile) return;
 
-  const shouldReplaceImage = imageUploadMode.value === "replace" && editor.value.isActive("image");
+  const shouldReplaceImage = mode === "replace" && editor.value.isActive("image");
 
   try {
     isUploadingImage.value = true;
     const [imageUrl] = await uploadFiles([croppedFile], { preset: "description" });
-
     if (!imageUrl) {
       throw new Error("Image upload returned empty URL");
     }
-
-    if (shouldReplaceImage) {
-      (editor.value.chain().focus() as any)
-        .updateAttributes("image", { src: imageUrl, alt: croppedFile.name })
-        .run();
-      syncSelectedImage();
-      return;
-    }
-
-    (editor.value.chain().focus() as any).setImage({ src: imageUrl, alt: croppedFile.name }).run();
+    applyImageUrlToEditor(imageUrl, croppedFile.name, shouldReplaceImage);
   } catch {
     toast.error({ message: "Upload ảnh thất bại." });
   } finally {
     isUploadingImage.value = false;
   }
+};
+
+// Mở nguồn chọn ảnh: có popup kho ảnh SP thì ưu tiên, không thì mở hộp chọn file.
+const runImagePicker = async (mode: "insert" | "replace") => {
+  if (isUploadingImage.value || isUploadingVideo.value) return;
+  imageUploadMode.value = mode;
+
+  if (props.pickProductImage) {
+    const res = await props.pickProductImage();
+    if (!res) return;
+    if (res.url) {
+      const shouldReplace = mode === "replace" && Boolean(editor.value?.isActive("image"));
+      applyImageUrlToEditor(res.url, "", shouldReplace);
+    } else if (res.file) {
+      await processImageFile(res.file, mode);
+    }
+    return;
+  }
+
+  imageInputRef.value?.click();
+};
+
+const openImagePicker = () => runImagePicker("insert");
+
+const openImageReplacePicker = () => runImagePicker("replace");
+
+const onImageSelected = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  target.value = "";
+  if (!file) return;
+  await processImageFile(file, imageUploadMode.value);
 };
 
 const openVideoPicker = () => {
@@ -1172,7 +1753,11 @@ const applyAiPreview = () => {
 watch(
   () => props.modelValue,
   (val) => {
-    if (editor.value && val !== editor.value.getHTML()) {
+    if (!editor.value) return;
+    // Bỏ qua echo của chính editor: giá trị vừa emit ra, hoặc trùng với nội dung hiện tại
+    // (so cùng-hệ: sanitize cả hai vế, vì getHTML() và bản sanitize serialize khác nhau).
+    if (val === lastEmittedHtml.value) return;
+    if (val !== sanitizeHtmlBeforeEmit(editor.value.getHTML())) {
       editor.value.commands.setContent(val || "");
     }
   },
@@ -1198,6 +1783,13 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  if (import.meta.client) {
+    window.removeEventListener("scroll", onFloatingScrollOrResize, true);
+    window.removeEventListener("resize", onFloatingScrollOrResize);
+    floatingResizeObserver?.disconnect();
+    contentAreaRef.value?.removeEventListener("desc-image-crop-editing", onImageCropEditing);
+    if (floatingRaf) cancelAnimationFrame(floatingRaf);
+  }
   editor.value?.destroy();
 });
 </script>
@@ -1211,11 +1803,107 @@ onBeforeUnmount(() => {
   border-radius: 6px 6px 0 0;
 }
 
+/* Khung soạn: khi bật xem trước thì có nền xám + căn giữa để thấy đúng bề ngang thiết bị */
+.tiptap-content-area.is-framed {
+  background: #ece7e5;
+  padding: 8px;
+  /* Popup mô tả đã bỏ footer + header gọn -> nhường tối đa chiều dọc cho vùng xem trước
+     (thấy được nhiều ảnh/nội dung hơn trong 1 màn) */
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+.tiptap-content-area.is-framed .tiptap-content-frame {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+  /* KHÔNG overflow:hidden để không cắt mất box-shadow của ảnh bên trong */
+}
+
+/* Trong khung xem trước: padding ngang của vùng soạn khớp ĐÚNG trang sản phẩm thật
+   để chữ xuống dòng giống hệt (mobile: section px-2 = 8px; desktop: section p-6 = 24px).
+   Trước đây dùng 12px của .tiptap nên khung chữ hẹp hơn -> câu bị xuống dòng sớm hơn. */
+.tiptap-content-area.is-framed[data-preview="mobile"] :deep(.tiptap) {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.tiptap-content-area.is-framed[data-preview="desktop"] :deep(.tiptap) {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* ------- Rail dọc: toolbar + toggle thiết bị dồn sang cột bên phải ------- */
+/* (dùng cho popup rộng) -> nhường toàn bộ chiều dọc cho vùng xem trước */
+.tiptap-wrapper--side {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.tiptap-wrapper--side .tiptap-content-area {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tiptap-wrapper--side .tiptap-sticky-tools {
+  order: 2;
+  position: static;
+  flex: 0 0 auto;
+  display: flex;
+  border-radius: 0 6px 6px 0;
+}
+
+/* Vùng soạn cao hết cỡ khi ở chế độ rail dọc (không còn thanh nào chiếm chiều dọc) */
+.tiptap-wrapper--side .tiptap-content-area.is-framed {
+  max-height: 86vh;
+}
+
+.tiptap-toolbar--vertical {
+  flex-direction: column;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 3px;
+  padding: 6px 5px;
+  border-bottom: none;
+  border-left: 1px solid #b6b6b6;
+  max-height: 86vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  .toolbar-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .toolbar-divider {
+    width: 18px;
+    height: 1px;
+    margin: 2px 0;
+  }
+
+  /* Ẩn nhãn chữ -> rail gọn dạng icon, các nút về vuông đều nhau */
+  .font-family-preview,
+  .font-size-preview,
+  .toolbar-ai-label {
+    display: none;
+  }
+
+  .toolbar-btn-preview,
+  .toolbar-ai-btn,
+  .toolbar-color-picker {
+    width: 30px;
+    padding: 0;
+    gap: 0;
+  }
+}
+
 .tiptap-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 3px;
+  padding: 3px 8px;
   border-bottom: 1px solid #b6b6b6;
   flex-wrap: wrap;
   background: #fff;
@@ -1224,8 +1912,8 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
+    width: 27px;
+    height: 27px;
     border-radius: 6px;
     cursor: pointer;
     color: #505050;
@@ -1261,13 +1949,13 @@ onBeforeUnmount(() => {
 
   .toolbar-divider {
     width: 1px;
-    height: 20px;
+    height: 18px;
     background: #b6b6b6;
-    margin: 0 4px;
+    margin: 0 2px;
   }
 
   .toolbar-select {
-    height: 30px;
+    height: 27px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
     padding: 0 8px;
@@ -1414,15 +2102,201 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view) {
+  position: relative;
+}
+
+/* Viền gợi ý khi rê chuột / đang soạn trong block -> biết ranh giới để kéo */
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view:hover),
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view:focus-within) {
+  outline: 1px dashed rgba(139, 0, 0, 0.4);
+  outline-offset: 2px;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-block-handle) {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #8b0000;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 30;
+  touch-action: none;
+}
+
+/* Mở rộng vùng bấm quanh tay cầm cho dễ trúng (kể cả khi tay cầm nhỏ) */
+.tiptap-wrapper :deep(.tiptap .desc-block-handle)::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+/* Hiện tay cầm khi rê chuột, đang soạn trong block, HOẶC khi block đang được chọn
+   (bấm tay cầm di chuyển -> block được chọn -> mọi tay cầm luôn hiện, dễ thao tác) */
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view:hover .desc-block-handle),
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view:focus-within .desc-block-handle),
+.tiptap-wrapper :deep(.tiptap .desc-block-node-view.ProseMirror-selectednode .desc-block-handle) {
+  opacity: 1;
+}
+
+/* Đặt tay cầm ngay bên trong mép block để không bị tuột chuột ra ngoài khi kéo */
+.tiptap-wrapper :deep(.tiptap .desc-block-handle--e) {
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-block-handle--s) {
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-block-handle--se) {
+  right: 2px;
+  bottom: 2px;
+  cursor: nwse-resize;
+}
+
 .desc-block-props-bar,
 .desc-image-props-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
-  padding: 8px 10px;
+  gap: 3px;
+  padding: 5px 6px;
   border-bottom: 1px solid #e5e7eb;
   background: #fafafa;
+}
+
+/* ===== Nút icon gọn trên thanh nổi (giống toolbar chính) ===== */
+.desc-toolbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.desc-toolbar-icon-btn:hover:not(:disabled) {
+  background: #f0eeed;
+}
+
+.desc-toolbar-icon-btn.active {
+  background: #8b0000;
+  color: #fff;
+}
+
+.desc-toolbar-icon-btn.is-danger:hover:not(:disabled) {
+  background: #fdeceb;
+  color: #b91c1c;
+}
+
+.desc-toolbar-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.desc-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 2px;
+  background: #e5e7eb;
+}
+
+.desc-toolbar-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f1eae8;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b0000;
+}
+
+/* Cụm icon + ô số (chiều rộng, bo góc, padding...) */
+.desc-toolbar-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  padding: 0 4px 0 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.desc-toolbar-num-icon {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.desc-toolbar-num-input {
+  width: 40px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #374151;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.desc-toolbar-num-input::-webkit-outer-spin-button,
+.desc-toolbar-num-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.desc-toolbar-select {
+  height: 30px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* Thanh công cụ nổi bám cạnh ảnh/block đang chọn */
+.desc-floating-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.desc-floating-bar.is-ready {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .desc-image-props-label,
@@ -1496,12 +2370,47 @@ onBeforeUnmount(() => {
 }
 
 .desc-block-color-input {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background: transparent;
+  cursor: pointer;
+}
+
+.desc-block-bg-mode {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.desc-block-bg-mode-btn {
+  border: none;
+  background: #fff;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #505050;
+  cursor: pointer;
+}
+
+.desc-block-bg-mode-btn + .desc-block-bg-mode-btn {
+  border-left: 1px solid #d1d5db;
+}
+
+.desc-block-bg-mode-btn.is-active {
+  background: #8b0000;
+  color: #fff;
+}
+
+.desc-block-bg-angle {
+  height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 4px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -1593,6 +2502,135 @@ onBeforeUnmount(() => {
 .tiptap-wrapper :deep(.tiptap .desc-image-node-view.ProseMirror-selectednode img) {
   outline: 2px solid rgba(139, 0, 0, 0.35);
   outline-offset: 2px;
+}
+
+/* Tay cầm kéo đổi kích thước ảnh (8 điểm: 4 góc + 4 cạnh) — chỉ hiện khi ảnh được chọn */
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle) {
+  display: none;
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #8b0000;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+  z-index: 3;
+  touch-action: none;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view.ProseMirror-selectednode .desc-image-handle) {
+  display: block;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--nw) {
+  top: -7px;
+  left: -7px;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--ne) {
+  top: -7px;
+  right: -7px;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--sw) {
+  bottom: -7px;
+  left: -7px;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--se) {
+  bottom: -7px;
+  right: -7px;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--n) {
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--s) {
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--e) {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view .desc-image-handle--w) {
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Đang cắt ảnh tại chỗ: ẩn tay cầm resize khung cho gọn */
+.tiptap-wrapper :deep(.tiptap .desc-image-node-view[data-crop-editing] .desc-image-handle) {
+  display: none;
+}
+
+/* Lớp phủ làm tối phần ảnh NGOÀI khung (khoét đúng khung) khi đang cắt */
+.tiptap-wrapper :deep(.tiptap .desc-image-crop-overlay) {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 55%);
+  outline: 1px dashed rgb(255 255 255 / 90%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Thanh kéo zoom dọc, NGOÀI mép phải khung khi đang cắt */
+.tiptap-wrapper :deep(.tiptap .desc-image-zoom-bar) {
+  position: absolute;
+  left: 100%;
+  margin-left: 12px;
+  top: 50%;
+  height: 70%;
+  transform: translateY(-50%);
+  writing-mode: vertical-lr;
+  direction: rtl;
+  accent-color: #8b0000;
+  background: rgb(255 255 255 / 90%);
+  border-radius: 999px;
+  padding: 4px 2px;
+  z-index: 8;
+  cursor: pointer;
+}
+
+/* Nút "Xong" khi đang cắt (góc trên phải khung) */
+/* Nút "Xong cắt ảnh": to, rõ, nằm giữa phía trên khung (nổi trên ảnh) để dễ thấy/bấm,
+   không còn nép góc phải bé xíu đè lên thanh công cụ ảnh. */
+.tiptap-wrapper :deep(.tiptap .desc-image-crop-done) {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: #8b0000;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  border: 2px solid #fff;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 40%);
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-crop-done:hover) {
+  background: #a30f0f;
+}
+
+.tiptap-wrapper :deep(.tiptap .desc-image-crop-done svg) {
+  display: block;
 }
 
 .tiptap-wrapper :deep(.tiptap .desc-video-node-view) {

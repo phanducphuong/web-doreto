@@ -20,10 +20,10 @@
         class="overflow-hidden rounded-lg bg-white pb-2"
       />
     </div>
-    <!-- PC (lg+): card đầy đủ như listing — tối đa 2 hàng -->
-    <div class="hidden grid-cols-2 gap-3 sm:gap-5 lg:grid lg:grid-cols-4 lg:gap-6">
+    <!-- PC (lg+): card đầy đủ như listing — 6 sản phẩm, 2 hàng x 3 cột -->
+    <div class="hidden grid-cols-2 gap-3 sm:gap-5 lg:grid lg:grid-cols-6 lg:gap-4">
       <MoleculesProductCard
-        v-for="p in relatedProducts.slice(0, 8)"
+        v-for="p in relatedProducts.slice(0, 6)"
         :key="p._id"
         :product="p"
         flush

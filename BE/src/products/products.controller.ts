@@ -93,6 +93,24 @@ export class ProductsController {
     );
   }
 
+  // Kiểm tra slug còn trống không (admin gõ tay để báo trùng ngay). Đặt TRƯỚC
+  // ':id' để không bị nuốt bởi route param.
+  @Roles(Role.ADMIN)
+  @Get('slug-available')
+  checkSlug(
+    @Query('slug') slug: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.productsService.checkSlugAvailability(slug, excludeId);
+  }
+
+  // Lấy sản phẩm theo slug cho URL /san-pham/:slug (2 đoạn -> không đụng ':id')
+  @Public()
+  @Get('slug/:slug')
+  findBySlug(@Param('slug') slug: string) {
+    return this.productsService.findBySlug(slug);
+  }
+
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {

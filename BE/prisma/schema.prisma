@@ -114,6 +114,10 @@ model Tag {
 model Product {
   id             String   @id @default(uuid()) @db.Uuid
   name           String
+  // Slug SEO cho URL /san-pham/:slug. Cố định sau khi đặt: đổi tên SP KHÔNG
+  // tự đổi slug (phải sửa tay có chủ đích). Nullable để migrate an toàn trên
+  // dữ liệu cũ; service luôn gán slug khi tạo/sửa nên SP mới luôn có slug.
+  slug           String?  @unique
   description    String?
   normalizedName String   @default("")
   minPrice       Float    @default(0)
@@ -220,6 +224,12 @@ model PurchaseOrder {
   address           Json? // snapshot địa chỉ giao (JSONB)
   deliveriedAt      DateTime?
   isFeedbacked      Boolean             @default(false)
+  // Tracking phase 37: visitor gắn với đơn (không FK — đơn admin tạo tay không có visitor)
+  visitorId         String?             @db.Uuid
+  // Mã camp first-touch lúc đặt hàng, lưu nguyên văn từ URL
+  camp              String?
+  // Snapshot utm_* first-touch (JSONB), lưu nguyên văn
+  utm               Json?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
@@ -230,6 +240,7 @@ model PurchaseOrder {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([visitorId])
   @@map("purchase_orders")
 }
 
@@ -293,9 +304,16 @@ model ContactRequest {
   email     String?
   done      Boolean   @default(false)
   doneAt    DateTime?
+  // Tracking phase 37: visitor gắn với liên hệ (không FK — form có thể gửi không kèm visitor)
+  visitorId String?   @db.Uuid
+  // Mã camp first-touch lúc gửi form, lưu nguyên văn từ URL
+  camp      String?
+  // Snapshot utm_* first-touch (JSONB), lưu nguyên văn
+  utm       Json?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  @@index([visitorId])
   @@map("contact_requests")
 }
 
@@ -361,4 +379,132 @@ model ImageFrame {
   products Product[]
 
   @@map("image_frames")
+}
+
+// ==== Tracking hành vi khách (phase 37) ====
+
+// Phiên truy cập của khách (kể cả ẩn danh). id do client sinh (UUID) và gửi lên.
+model VisitorSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  // visitor_id từ cookie ẩn danh first-party (UUID client sinh)
+  visitorId      String   @db.Uuid
+  // Mã camp first-touch (vd S01-A), lưu nguyên văn không map
+  camp           String?
+  // Snapshot utm_* first-touch nguyên văn (JSONB)
+  utm            Json?
+  landingUrl     String?
+  referrer       String?
+  userAgent      String?
+  // Cập nhật mỗi lần nhận page view/event — cùng chuỗi timestamp page_views dùng đo thời gian ở web
+  lastActivityAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  pageViews PageView[]
+  events    VisitorEvent[]
+
+  @@index([visitorId])
+  @@index([camp])
+  @@index([createdAt])
+  @@map("visitor_sessions")
+}
+
+// Lượt xem trang — bảng append-only, không cần updatedAt
+model PageView {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @db.Uuid
+  visitorId String   @db.Uuid
+  // Denormalize camp first-touch để groupBy không phải join
+  camp      String?
+  path      String
+  url       String
+  referrer  String?
+  createdAt DateTime @default(now())
+
+  session VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([camp])
+  @@index([createdAt])
+  @@map("page_views")
+}
+
+// Sự kiện funnel — type là String (whitelist ở DTO): product_view, add_to_cart,
+// begin_checkout, order_success, contact_form. Không dùng enum Prisma để thêm loại
+// event sau này không cần migration.
+model VisitorEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @db.Uuid
+  visitorId String   @db.Uuid
+  camp      String?
+  type      String
+  // Không FK sang products/orders — tracking phải fail-safe, SP bị xóa không được làm hỏng insert
+  productId String?  @db.Uuid
+  orderId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  session VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([camp])
+  @@index([type, createdAt])
+  @@map("visitor_events")
+}
+
+// Báo cáo tổng hợp lượt truy cập theo ngày × camp (rebuild + upsert, analog OrderDailyReport)
+model VisitDailyReport {
+  id                 String   @id @default(uuid()) @db.Uuid
+  // Định dạng YYYY-MM-DD (String như OrderDailyReport)
+  date               String
+  // Chuỗi rỗng = "không có camp" — sentinel vì Postgres unique cho phép trùng NULL,
+  // upsert theo unique kép (date, camp) với NULL sẽ hỏng
+  camp               String   @default("")
+  sessionCount       Int      @default(0)
+  visitorCount       Int      @default(0)
+  pageViewCount      Int      @default(0)
+  productViewCount   Int      @default(0)
+  addToCartCount     Int      @default(0)
+  beginCheckoutCount Int      @default(0)
+  orderSuccessCount  Int      @default(0)
+  contactFormCount   Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([date, camp])
+  @@index([date])
+  @@map("visit_daily_reports")
+}
+
+// ==== Outbox bắn lead sang CRM (phase 38) ====
+// Ghi payload lead CÙNG transaction tạo đơn/liên hệ (at-least-once): đơn commit thì
+// lead chắc chắn được xếp hàng. Worker nền POST sang webhook CRM với retry + backoff,
+// idempotent nhờ @@unique(sourceKind, sourceId) — POST rồi PATCH cùng đơn chỉ 1 row (D-04, D-08).
+model DecorLeadOutbox {
+  id String @id @default(uuid()) @db.Uuid
+  // 'order' (đơn PurchaseOrder) | 'contact' (liên hệ ContactRequest) — whitelist ở service, không enum để linh hoạt
+  sourceKind String
+  // id đơn/liên hệ decor
+  sourceId String @db.Uuid
+  // Nguyên body sẽ POST sang CRM (khớp CreateDecorLeadDto plan 02)
+  payload Json
+  // 'pending' | 'sent' | 'failed'
+  status String @default("pending")
+  // Số lần đã thử gửi
+  attempts Int @default(0)
+  // Lỗi gửi gần nhất (không chứa PII payload)
+  lastError String?
+  // Thời điểm đủ điều kiện gửi lại (backoff)
+  nextAttemptAt DateTime @default(now())
+  // Thời điểm gửi thành công
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Chống enqueue trùng: mỗi đơn/liên hệ đúng 1 row (D-08)
+  @@unique([sourceKind, sourceId])
+  // Worker quét pending tới hạn nhanh
+  @@index([status, nextAttemptAt])
+  @@map("decor_lead_outbox")
 }

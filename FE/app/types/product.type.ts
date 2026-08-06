@@ -19,8 +19,10 @@ export type TOptionValue = {
 export type TProduct = {
   _id: string;
   name: string;
+  // Slug SEO cho URL /san-pham/:slug (do BE sinh, cố định sau khi đặt)
+  slug?: string;
   description?: string;
-  descriptionFrameId?: number | null;
+  descriptionFrameId?: string | null;
   descriptionFrame?: TActiveImageFrame | null;
   price?: number;
   imageUrls: string[];
@@ -29,6 +31,7 @@ export type TProduct = {
   thumbnailFiles: File[];
   categoryIds: string[];
   tagIds: string[];
+  similarProductIds?: string[];
   productOptions: string[];
   optionValueIds: string[];
   optionValues: TOptionValue[];
@@ -66,6 +69,7 @@ export type TProductQueryParams = TPaginateRequest & {
 
 export type TProductFormError = {
   name?: string;
+  slug?: string;
   description?: string;
   categoryIds?: string;
   imageUrls?: string;

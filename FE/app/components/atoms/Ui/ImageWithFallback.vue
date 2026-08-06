@@ -1,40 +1,64 @@
 <template>
   <div class="relative overflow-hidden !transition-none" :class="imgClass" @click="emit('click')">
+    <!-- src rỗng (chưa có ảnh) → hiện placeholder, KHÔNG phải ảnh lỗi -->
     <img
-      v-show="showPlaceholder"
+      v-if="isEmpty"
       :src="placeholderSrc"
       :alt="`${resolvedAlt}-placeholder`"
-      :class="imgClass"
       :width="width"
       :height="height"
-      class="absolute inset-0 max-w-full max-h-full object-cover"
+      :class="imgClass"
+      class="max-w-full max-h-full object-cover"
     />
 
-    <NuxtImg
-      v-if="isNuxtImage"
-      ref="realImageRef"
-      :src="resolvedSrc"
-      :width="width"
-      :height="height"
-      :format="format"
-      :alt="resolvedAlt"
-      :class="['max-w-full max-h-full object-cover', imgClass, imageVisibilityClass]"
-      :loading="loading"
-      @load="handleLoad"
-      @error="handleError"
-    />
+    <!-- Ảnh lỗi thật → thẻ <img> thuần, không qua NuxtImg/_ipx (nếu _ipx chết thì fallback vẫn hiện được) -->
     <img
-      v-else
-      ref="realImageRef"
-      :src="resolvedSrc"
-      :alt="resolvedAlt"
+      v-else-if="hasError"
+      :src="errorSrc"
+      :alt="`${resolvedAlt}-error`"
       :width="width"
       :height="height"
-      :class="['max-w-full max-h-full object-cover', imgClass, imageVisibilityClass]"
-      :loading="loading"
-      @load="handleLoad"
-      @error="handleError"
+      :class="imgClass"
+      class="max-w-full max-h-full object-cover"
     />
+
+    <template v-else>
+      <img
+        v-show="showPlaceholder"
+        :src="placeholderSrc"
+        :alt="`${resolvedAlt}-placeholder`"
+        :class="imgClass"
+        :width="width"
+        :height="height"
+        class="absolute inset-0 max-w-full max-h-full object-cover"
+      />
+
+      <NuxtImg
+        v-if="isNuxtImage"
+        ref="realImageRef"
+        :src="src"
+        :width="width"
+        :height="height"
+        :format="format"
+        :alt="resolvedAlt"
+        :class="['max-w-full max-h-full object-cover', imgClass, imageVisibilityClass]"
+        :loading="loading"
+        @load="handleLoad"
+        @error="handleError"
+      />
+      <img
+        v-else
+        ref="realImageRef"
+        :src="src"
+        :alt="resolvedAlt"
+        :width="width"
+        :height="height"
+        :class="['max-w-full max-h-full object-cover', imgClass, imageVisibilityClass]"
+        :loading="loading"
+        @load="handleLoad"
+        @error="handleError"
+      />
+    </template>
   </div>
 </template>
 
@@ -82,7 +106,7 @@ const hasError = ref(false);
 const realImageRef = ref<HTMLImageElement | { $el?: HTMLImageElement } | null>(null);
 
 const resolvedAlt = computed(() => props.alt || "image");
-const resolvedSrc = computed(() => (hasError.value ? props.errorSrc : props.src));
+const isEmpty = computed(() => !props.src?.trim());
 const showPlaceholder = computed(() => !isHydrated.value || (isLoading.value && !hasError.value));
 const imageVisibilityClass = computed(() => (showPlaceholder.value ? "opacity-0" : "opacity-100"));
 
@@ -102,8 +126,9 @@ const getRealImageEl = (): HTMLImageElement | null => {
 const syncWithRealImage = () => {
   if (!import.meta.client) return;
 
-  if (!props.src?.trim()) {
-    hasError.value = true;
+  // src rỗng → hiện placeholder (trạng thái "chưa có ảnh"), không phải lỗi
+  if (isEmpty.value) {
+    hasError.value = false;
     isLoading.value = false;
     return;
   }
@@ -126,8 +151,7 @@ watch(
   () => {
     hasError.value = false;
     isLoading.value = true;
-    if (!props.src?.trim()) {
-      hasError.value = true;
+    if (isEmpty.value) {
       isLoading.value = false;
       return;
     }

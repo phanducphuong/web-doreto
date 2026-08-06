@@ -244,7 +244,7 @@ const openCreateModal = () => {
   nextTick(() => frameModalRef.value?.openModal());
 };
 
-const openEditModal = async (id: number) => {
+const openEditModal = async (id: string) => {
   formMode.value = "edit";
   formErrors.value = {};
 
@@ -346,7 +346,7 @@ const submitForm = async () => {
   }
 };
 
-const onDelete = async (id: number) => {
+const onDelete = async (id: string) => {
   const confirmed = window.confirm(
     "Vô hiệu hóa khung này? Các sản phẩm đang dùng khung sẽ bỏ khung mặc định.",
   );

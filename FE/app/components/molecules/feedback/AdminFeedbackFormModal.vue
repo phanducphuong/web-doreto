@@ -109,9 +109,9 @@ const { uploadFiles, isUploading, error: uploadError } = useUploadFiles();
 
 const modalRef = ref<InstanceType<typeof MoleculesCommonModal>>();
 const feedback = ref<TFeedbackManagementItem | null>(null);
-const presetProduct = ref<{ id: number; name: string } | null>(null);
+const presetProduct = ref<{ id: string | number; name: string } | null>(null);
 const productKeyword = ref("");
-const productOptions = ref<{ label: string; value: number }[]>([]);
+const productOptions = ref<{ label: string; value: string | number }[]>([]);
 const existingImages = ref<string[]>([]);
 const newFiles = ref<File[]>([]);
 const errorMessage = ref("");
@@ -180,7 +180,7 @@ const searchProducts = async () => {
   }
 };
 
-const openCreateModal = async (product?: { id: number; name: string }) => {
+const openCreateModal = async (product?: { id: string | number; name: string }) => {
   resetForm();
   if (product) {
     presetProduct.value = product;

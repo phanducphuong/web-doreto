@@ -16,7 +16,7 @@
       <p
         class="text-center font-body text-sm leading-relaxed text-on-surface-variant/80 sm:text-lg md:text-xl"
       >
-        Chưa có sản phẩm nào trong giỏ hàng của bạn.
+        Chưa có sản phẩm nào được chọn để mang lại bình an cho không gian của bạn.
       </p>
       <AtomsButton
         type="primaryGradient"

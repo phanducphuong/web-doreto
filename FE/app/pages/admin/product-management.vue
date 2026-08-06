@@ -64,9 +64,9 @@
             <AtomsButton
               type="outline"
               class="min-h-8 text-xs whitespace-nowrap"
-              @click="openCreateFeedbackModal(row)"
+              @click="openFeedbackManagerModal(row)"
             >
-              Thêm đánh giá
+              Đánh giá
             </AtomsButton>
           </div>
         </template>
@@ -87,10 +87,9 @@
         @submit="onSubmitVirtualPurchase"
       />
 
-      <MoleculesFeedbackAdminFeedbackFormModal
+      <MoleculesFeedbackAdminProductFeedbackManagerModal
         ref="feedbackModalRef"
-        :submitting="isSavingFeedback"
-        @create="onCreateFeedback"
+        @changed="onFeedbackChanged"
       />
     </div>
   </section>
@@ -98,13 +97,12 @@
 
 <script setup lang="ts">
 import useProduct from "~/composables/product.composable";
-import type { TAdminCreateFeedbackDto } from "~/types/feedback.type";
 import type { TExistedProduct, TProductQueryParams } from "~/types/product.type";
 import type { TTableColumn } from "~/types/table.type";
 import MoleculesVCUProduct from "~/components/molecules/VCUProduct.vue";
 import MoleculesAdminProductFilter from "~/components/molecules/AdminProductFilter.vue";
 import MoleculesProductAdminVirtualPurchaseCountModal from "~/components/molecules/product/AdminVirtualPurchaseCountModal.vue";
-import MoleculesFeedbackAdminFeedbackFormModal from "~/components/molecules/feedback/AdminFeedbackFormModal.vue";
+import MoleculesFeedbackAdminProductFeedbackManagerModal from "~/components/molecules/feedback/AdminProductFeedbackManagerModal.vue";
 import { getDisplayPurchaseCount } from "~/utils/product.utils";
 import { getApiErrorMessage } from "~/utils/api-error";
 import useTag from "~/composables/tag.composable";
@@ -113,19 +111,19 @@ import { Plus } from "lucide-vue-next";
 const route = useRoute();
 const { updateQuery } = useUpdateRouteQuery();
 const { listProducts, fetchProducts, pagination, isFetching } = useProduct();
-const { $productRepository, $feedbackRepository } = useNuxtApp();
+const { $productRepository } = useNuxtApp();
 const toast = useToast();
 
 const vcuProductRef = ref<InstanceType<typeof MoleculesVCUProduct>>();
 const virtualPurchaseModalRef =
   ref<InstanceType<typeof MoleculesProductAdminVirtualPurchaseCountModal>>();
-const feedbackModalRef = ref<InstanceType<typeof MoleculesFeedbackAdminFeedbackFormModal>>();
+const feedbackModalRef =
+  ref<InstanceType<typeof MoleculesFeedbackAdminProductFeedbackManagerModal>>();
 
 const { categories } = storeToRefs(useCategoryStore());
 const { tags, fetchTags } = useTag();
 
 const isSavingVirtualPurchase = ref(false);
-const isSavingFeedback = ref(false);
 
 const params = computed<TProductQueryParams>(() => ({
   ...route.query,
@@ -136,12 +134,6 @@ const params = computed<TProductQueryParams>(() => ({
 }));
 
 const columns = reactive<TTableColumn<TExistedProduct>[]>([
-  {
-    key: "_id",
-    title: "ID",
-    colClass: "w-14",
-    center: true,
-  },
   {
     key: "name",
     title: "Tên sản phẩm",
@@ -198,9 +190,9 @@ const openVirtualPurchaseModal = (product: TExistedProduct) => {
   virtualPurchaseModalRef.value?.openModal(product);
 };
 
-const openCreateFeedbackModal = (product: TExistedProduct) => {
+const openFeedbackManagerModal = (product: TExistedProduct) => {
   if (!product._id) return;
-  feedbackModalRef.value?.openCreateModal({
+  feedbackModalRef.value?.openModal({
     id: product._id,
     name: product.name,
   });
@@ -228,19 +220,9 @@ const onSubmitVirtualPurchase = async (payload: {
   }
 };
 
-const onCreateFeedback = async (body: TAdminCreateFeedbackDto) => {
-  try {
-    isSavingFeedback.value = true;
-    await $feedbackRepository.adminCreateFeedback(body);
-    feedbackModalRef.value?.closeModal();
-    toast.success({ message: "Tạo đánh giá thành công." });
-  } catch (error) {
-    const message = getApiErrorMessage(error, "Tạo đánh giá thất bại.");
-    feedbackModalRef.value?.setError(message);
-    toast.error({ message });
-  } finally {
-    isSavingFeedback.value = false;
-  }
+// Sau khi thêm/sửa/xóa đánh giá: làm mới danh sách để cập nhật số sao hiển thị
+const onFeedbackChanged = () => {
+  fetchProducts(params.value);
 };
 
 const onPageChange = (page: number) => {

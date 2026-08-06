@@ -84,8 +84,8 @@ useSeoMeta({
   title: () => `${headLabel.value || "Sản phẩm"} | Doreto`,
   description: () =>
     route.name === "danh-muc"
-      ? `Khám phá các sản phẩm thuộc danh mục ${headLabel.value || "đang cập nhật"} tại Doreto.`
-      : "Khám phá toàn bộ sản phẩm thời trang tại Doreto.",
+      ? `Khám phá các sản phẩm thời trang nam thuộc danh mục ${headLabel.value || "đang cập nhật"} tại Doreto.`
+      : "Khám phá toàn bộ sản phẩm thời trang nam tại Doreto.",
 });
 
 useBreadcrumbSchema(

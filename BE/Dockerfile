@@ -19,4 +19,6 @@ COPY --from=builder /app/prisma ./prisma
 EXPOSE 8080
 ENV PORT=8080
 
-CMD ["node", "dist/main.js"]
+# Áp migration (chỉ apply migration đã commit, idempotent) rồi mới khởi động app.
+# Dùng thẳng DATABASE_URL do Cloud Run cấp cho container.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
