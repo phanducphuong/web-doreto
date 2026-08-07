@@ -130,7 +130,7 @@
                 :ai-name="productForm.name || ''"
                 :ai-category-names="selectedCategoryNames"
                 :ai-tag-names="selectedTagNames"
-                :allow-ai-generate="isEdit"
+                :allow-ai-generate="false"
                 :ai-replace-content="false"
                 :pick-product-image="openImageFromProduct"
                 enable-preview-width
@@ -584,7 +584,7 @@
           :ai-name="productForm.name || ''"
           :ai-category-names="selectedCategoryNames"
           :ai-tag-names="selectedTagNames"
-          :allow-ai-generate="isEdit"
+          :allow-ai-generate="false"
           :ai-replace-content="false"
           :pick-product-image="openImageFromProduct"
           enable-preview-width

@@ -86,7 +86,7 @@ export default defineNuxtConfig({
         options: { baseURL: "https://cdn.dorreto.com" },
       },
     },
-    domains: ["localhost", "127.0.0.1", "cdn.dorreto.com"],
+    domains: ["localhost", "127.0.0.1", "cdn.dorreto.com", "pub-7d4bde061b564d499f9749154f05527f.r2.dev"],
 
     // Dự phòng: nếu muốn quay lại resize tại server (ipx), bỏ 2 dòng provider ở
     // trên là @nuxt/image tự dùng lại _ipx (kèm plugin server/plugins/force-ipv4.ts).

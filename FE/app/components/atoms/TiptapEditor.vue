@@ -797,7 +797,7 @@ const props = withDefaults(
   {
     modelValue: "",
     disabled: false,
-    allowAiGenerate: true,
+    allowAiGenerate: false,
     aiName: "",
     aiCategoryNames: () => [],
     aiTagNames: () => [],
