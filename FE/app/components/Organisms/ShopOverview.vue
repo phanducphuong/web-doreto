@@ -3,24 +3,21 @@
     <!-- * THẺ THÔNG TIN SHOP (kiểu TikTok Shop) -->
     <div class="rounded-xl bg-white p-4 shadow-sm sm:p-6">
       <div class="flex items-center gap-3 sm:gap-4">
-        <!-- Ảnh logo có sẵn chữ ở phần dưới — chỉ cắt bỏ dải chữ, giữ trọn hình con ngựa -->
+        <!-- Avatar logo D: nền tròn đen kín, chữ D phóng to canh giữa -->
         <div
-          class="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-full bg-surface-container-low ring-1 ring-outline-variant sm:(h-24 w-24)"
+          class="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-full bg-black ring-1 ring-white/15 sm:(h-24 w-24)"
         >
-          <span
-            class="absolute inset-x-0 top-1/2 block overflow-hidden -translate-y-1/2"
-            style="height: 72%"
-          >
-            <img
-              :src="Logo"
-              alt="Logo Doreto"
-              class="block h-auto w-full"
-            />
-          </span>
+          <img
+            :src="Logo"
+            alt="Logo Doreto"
+            class="absolute left-1/2 top-1/2 h-full w-full -translate-x-[54%] -translate-y-1/2 scale-[1.2] object-cover"
+          />
         </div>
         <div class="min-w-0 flex-1">
-          <h3 class="line-clamp-2 text-base font-bold leading-snug text-on-surface sm:text-lg">
-            {{ shopInfo.name }}
+          <h3 class="flex items-center gap-1 text-base font-bold leading-snug text-on-surface sm:text-lg">
+            <span class="line-clamp-2">{{ shopInfo.name }}</span>
+            <!-- Tích xanh xác minh (giống Facebook): nền xanh, viền + dấu tích trắng -->
+            <BadgeCheck class="size-4.5 shrink-0 text-white sm:size-5" style="fill: #1877f2" />
           </h3>
           <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-on-surface-variant sm:text-sm">
             <span class="flex items-center gap-1 font-semibold text-amber-500">
@@ -72,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { Camera, Star } from "lucide-vue-next";
+import { BadgeCheck, Camera, Star } from "lucide-vue-next";
 import Logo from "~/assets/images/web-logo.png";
 
 // ! Số liệu ảo để test UI — sau này thay bằng dữ liệu thật từ API

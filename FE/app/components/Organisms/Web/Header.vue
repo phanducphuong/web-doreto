@@ -1,6 +1,6 @@
 <template>
   <div
-    class="sticky top-0 z-[21] w-full bg-bg-body shadow-sm transition-transform duration-300 ease-in-out"
+    class="sticky top-0 z-[21] w-full bg-black text-white shadow-sm transition-transform duration-300 ease-in-out"
     :class="{ '-translate-y-full': isHeaderHidden }"
   >
     <div class="mx-auto flex max-w-1312px items-center gap-3 px-4 py-1.5 md:px-8 lg:py-2">
