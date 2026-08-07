@@ -8,7 +8,8 @@ PROJECT="project-ca44e667-92ed-44a7-b3d"
 REGION="asia-southeast1"
 SA="doreto-run@$PROJECT.iam.gserviceaccount.com"
 IMAGE_FE="$REGION-docker.pkg.dev/$PROJECT/doreto-docker/doreto-fe:latest"
-BE_URL="https://doreto-be-p2r2izf7sq-as.a.run.app"
+# CHỈ chạy sau khi https://api.dorreto.com đã lên (có SSL). Trước đó dùng URL run.app.
+BE_URL="https://api.dorreto.com"
 ROOT="/Users/phanphuong02/Projects/web doreto"
 
 cd "$ROOT" || exit 1
