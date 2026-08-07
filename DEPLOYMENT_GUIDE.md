@@ -1,5 +1,27 @@
 # 🚀 HƯỚNG DẪN TRIỂN KHAI DORETO LÊN GOOGLE CLOUD (Phương án B)
 
+## ✅ TRẠNG THÁI THỰC TẾ (cập nhật 2026-08-07 — ĐÃ DEPLOY THÀNH CÔNG)
+
+| Hạng mục | Giá trị |
+|---|---|
+| Backend | `doreto-be` → https://doreto-be-p2r2izf7sq-as.a.run.app |
+| Frontend | `doreto-fe` → https://doreto-fe-p2r2izf7sq-as.a.run.app |
+| Database | `doreto_web` trong `crm-pl-prod`, user `doreto_app` (9 bảng đã migrate) |
+| Image repo | `doreto-docker` (Artifact Registry) |
+| Service account | `doreto-run@…` (role cloudsql.client) |
+| Admin | `admin@doreto.com` / `admin123` (ĐỔI NGAY) |
+
+**Script tự động** (trong `scripts/`): `deploy-doreto-infra.sh` (tạo nền), `deploy-be.sh`, `deploy-all.sh`, `deploy-resume.sh` (deploy), `seed-prod.sh` (seed admin), `redeploy-be-r2.sh` (thêm R2). Secret production lưu ở file `doreto-secrets.env` (KHÔNG commit).
+
+**⚠️ Các lỗi đã gặp & cách tránh (khác với lệnh mẫu bên dưới):**
+1. **KHÔNG set env `PORT`** trong `gcloud run deploy` — Cloud Run báo lỗi "reserved env names". Bỏ `PORT` đi (hệ thống tự cấp).
+2. **KHÔNG dùng separator `^@^`** cho `--set-env-vars`: `DATABASE_URL` chứa `@localhost` sẽ vỡ. Dùng separator mặc định (dấu phẩy) — các value đều không chứa dấu phẩy nên an toàn.
+3. Trong file `.env`/secret, **phải quote** `DATABASE_URL='...'` vì chứa `&` (nếu không, `source` sẽ hiểu `&` là chạy nền).
+4. Build image vào repo riêng: `gcloud builds submit ./BE --tag <doreto-docker>/doreto-be` rồi `gcloud run deploy --image …` (không dùng `--source` để khỏi đổ vào repo mặc định).
+5. **Auto-mode classifier của Claude Code chặn mọi lệnh gcloud tạo/deploy** — phải chạy script trong Terminal thật (lệnh gcloud chỉ-đọc thì không bị chặn).
+
+---
+
 Dự án gồm **Backend (NestJS + Prisma + PostgreSQL)** và **Frontend (Nuxt)**.
 - Database: **Cloud SQL for PostgreSQL** — dùng **chung instance `crm-pl-prod`** với decor/crm, nhưng **database + user Postgres riêng** cho doreto (tách vùng, không chồng chéo).
 - Backend/Frontend: **Cloud Run**.

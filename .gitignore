@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Secret production & script sẽ chứa secret khi điền (KHÔNG đưa lên git)
+*-secrets.env
+scripts/redeploy-be-r2.sh
+
 # Cấu hình Claude Code cục bộ
 .claude/
 
