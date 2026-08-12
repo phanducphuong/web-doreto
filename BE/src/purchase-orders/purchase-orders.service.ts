@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -28,6 +29,14 @@ type BuiltItem = SnapshotItem & {
   price: number;
   product: Prisma.InputJsonValue;
   productOptionValue: Prisma.InputJsonValue;
+};
+
+// BuiltItem kèm field combo tạm (dùng để áp giá combo rồi loại bỏ trước khi lưu).
+type ComboRawItem = BuiltItem & {
+  comboGroupId?: string;
+  comboQuantity?: number;
+  comboLabel?: string;
+  comboTiers?: Prisma.JsonValue;
 };
 
 const ORDER_INCLUDE = {
@@ -429,7 +438,7 @@ export class PurchaseOrdersService {
   private async buildPurchaseItemSnapshots(
     purchaseItems: PurchaseItemDto[],
   ): Promise<BuiltItem[]> {
-    return Promise.all(
+    const built = await Promise.all(
       purchaseItems.map(async (item) => {
         const product = await this.prisma.product.findUnique({
           where: { id: item.productId },
@@ -449,12 +458,99 @@ export class PurchaseOrdersService {
           productId: item.productId,
           productOptionValueId: item.productOptionValueId,
           count: item.count,
+          // Mặc định giá lẻ của biến thể; combo sẽ ghi đè bên dưới.
           price: optionValue.price,
           product: this.toJson(product),
           productOptionValue: this.toJson(optionValue),
-        };
+          // Field tạm để áp giá combo, xóa trước khi trả về.
+          comboGroupId: item.comboGroupId,
+          comboQuantity: item.comboQuantity,
+          comboLabel: item.comboLabel,
+          comboTiers: product.comboTiers,
+        } as ComboRawItem;
       }),
     );
+
+    this.applyComboPricing(built);
+
+    // Gỡ field combo tạm; gắn snapshot combo (để hiển thị) vào biến thể combo.
+    return built.map((raw) => {
+      const { comboGroupId, comboQuantity, comboLabel, comboTiers, ...rest } =
+        raw;
+      void comboTiers;
+      if (comboGroupId) {
+        rest.productOptionValue = this.toJson({
+          ...(rest.productOptionValue as Record<string, unknown>),
+          __combo: {
+            groupId: comboGroupId,
+            quantity: comboQuantity ?? null,
+            label: comboLabel ?? null,
+          },
+        });
+      }
+      return rest;
+    });
+  }
+
+  /**
+   * Áp giá combo: các dòng cùng comboGroupId gộp thành 1 gói. BE KHÔNG tin giá
+   * client — tự tra Product.comboTiers theo comboQuantity, lấy tier.price làm giá
+   * gói rồi chia đều cho từng sản phẩm (phần dư dồn vào các dòng đầu) để tổng
+   * đúng bằng giá combo. Mỗi dòng combo phải count=1 (1 dòng = 1 sản phẩm).
+   */
+  private applyComboPricing(items: ComboRawItem[]) {
+    const groups = new Map<string, ComboRawItem[]>();
+    for (const item of items) {
+      if (!item.comboGroupId) continue;
+      const arr = groups.get(item.comboGroupId) ?? [];
+      arr.push(item);
+      groups.set(item.comboGroupId, arr);
+    }
+
+    for (const groupItems of groups.values()) {
+      if (groupItems.some((i) => i.count !== 1)) {
+        throw new BadRequestException(
+          'Mỗi sản phẩm trong combo phải là 1 (count=1)',
+        );
+      }
+      const quantity = groupItems[0]!.comboQuantity;
+      if (!quantity || quantity !== groupItems.length) {
+        throw new BadRequestException('Số lượng combo không khớp');
+      }
+      const productId = groupItems[0]!.productId;
+      if (groupItems.some((i) => i.productId !== productId)) {
+        throw new BadRequestException('Combo phải cùng một sản phẩm');
+      }
+      const tier = this.parseComboTiers(groupItems[0]!.comboTiers).find(
+        (t) => t.quantity === quantity,
+      );
+      if (!tier) {
+        throw new BadRequestException(
+          'Bậc combo không tồn tại cho sản phẩm này',
+        );
+      }
+      const total = Math.max(0, Math.round(tier.price));
+      const base = Math.floor(total / quantity);
+      const remainder = total - base * quantity;
+      groupItems.forEach((item, index) => {
+        item.price = base + (index < remainder ? 1 : 0);
+      });
+    }
+  }
+
+  /** Đọc an toàn mảng comboTiers từ cột JSON của product. */
+  private parseComboTiers(
+    raw: unknown,
+  ): { quantity: number; price: number }[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((tier) => tier as Record<string, unknown>)
+      .filter((tier) => !!tier && typeof tier === 'object')
+      .map((tier) => ({
+        quantity: Number(tier.quantity),
+        price: Number(tier.price),
+      }))
+      .filter((tier) => Number.isFinite(tier.quantity) && Number.isFinite(tier.price));
   }
 
   private calcSummaryPrice(items: Array<{ price: number; count: number }>) {

@@ -7,7 +7,7 @@
       </h2>
       <div
         v-for="item in listCartProduct"
-        :key="item.optionValue._id"
+        :key="getCartItemKey(item)"
         class="relative mb-4 flex items-start gap-3 rounded-xl bg-white p-3 shadow sm:(mb-5 gap-4 p-4) md:(gap-5 p-5)"
       >
         <button
@@ -44,8 +44,22 @@
             <span class="text-(10px gray-500) sm:text-xs italic">{{
               getDetailText(item.product, item.optionValue)
             }}</span>
+            <AtomsBadge
+              v-if="item.comboKey"
+              type="success"
+              class="mt-0.5 !p-(x-1.5 y-0.5) !text-10px"
+              :label="item.comboLabel || 'Combo'"
+            />
+          </div>
+          <!-- Dòng combo: số lượng cố định (1 sản phẩm / dòng), không cho +/- -->
+          <div
+            v-if="item.comboKey"
+            class="w-fit rounded-full bg-success-container/30 px-3 py-1 text-xs font-semibold text-success"
+          >
+            Trong combo · 1 sản phẩm
           </div>
           <div
+            v-else
             class="center-child w-fit min-w-[90px] gap-2 rounded-full border-(2 primary/10) bg-white p-1.5 leading-none sm:(min-w-[100px] p-2)"
           >
             <button
@@ -68,14 +82,14 @@
         <div
           class="mt-auto min-w-[84px] text-right text-sm font-bold text-primary sm:(min-w-[100px] text-lg xl:text-xl)"
         >
-          {{ formatPrice(item.optionValue.price * item.quantity) }}
+          {{ formatPrice(getCartLineUnitPrice(item) * item.quantity) }}
         </div>
         <AtomsButton
           type="ghost"
           class="absolute right-1 top-1 w-[32px] sm:(right-2 top-2 w-[36px])"
           circle
           :icon="X"
-          @click="removeItem(item.product, item.optionValue)"
+          @click="removeItem(item)"
         ></AtomsButton>
       </div>
 
@@ -95,9 +109,10 @@
 </template>
 
 <script setup lang="ts">
-import { usePurchaseOrderStore } from "#imports";
+import { usePurchaseOrderStore, getCartLineUnitPrice } from "~/stores/purchase-order.store";
 import { Check, X } from "lucide-vue-next";
 import type { TExistedProduct, TOptionValue } from "~/types/product.type";
+import type { TCartItem } from "~/stores/purchase-order.store";
 
 const emit = defineEmits(["nextTab"]);
 const toast = useToast();
@@ -105,7 +120,9 @@ const toast = useToast();
 const {
   addProductToCart,
   removeProductFromCart,
+  removeCartItem,
   getDetailText,
+  getCartItemKey,
   isCartItemSelected,
   toggleCartItemSelected,
 } = usePurchaseOrderStore();
@@ -121,8 +138,8 @@ const decreaseQty = (product: TExistedProduct, productOptionValue: TOptionValue)
   removeProductFromCart(product._id, productOptionValue._id || "", "decrement");
 };
 
-const removeItem = (product: TExistedProduct, productOptionValue: TOptionValue) => {
-  removeProductFromCart(product._id, productOptionValue._id || "", "removeAll");
+const removeItem = (item: TCartItem) => {
+  removeCartItem(item);
 };
 
 const applyDiscount = () => {

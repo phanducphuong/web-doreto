@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OptionValueDto } from './option-value.dto';
+import { ComboTierDto } from './combo-tier.dto';
 
 export class CreateProductDto {
   @IsString()
@@ -48,6 +49,13 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => OptionValueDto)
   optionValues?: OptionValueDto[];
+
+  // Bậc combo theo tổng số lượng (tùy chọn) — lưu riêng theo từng SP
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ComboTierDto)
+  comboTiers?: ComboTierDto[];
 
   @IsOptional()
   @IsArray()

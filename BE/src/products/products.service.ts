@@ -217,6 +217,8 @@ export class ProductsService {
         slug: resolvedSlug,
         description: productData.description,
         productOptions: productData.productOptions ?? [],
+        comboTiers: (createProductDto.comboTiers ??
+          []) as unknown as Prisma.InputJsonValue,
         imageUrls: productData.imageUrls ?? [],
         thumbnailUrls: productData.thumbnailUrls ?? [],
         normalizedName: normalizeText(createProductDto.name),
@@ -350,13 +352,24 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    const { optionValues, categoryIds, tagIds, similarProductIds, slug, ...productData } =
-      updateProductDto;
+    const {
+      optionValues,
+      categoryIds,
+      tagIds,
+      similarProductIds,
+      slug,
+      comboTiers,
+      ...productData
+    } = updateProductDto;
 
     // Unchecked input để nhận thẳng descriptionFrameId (uuid hoặc null = bỏ khung)
     const scalarData: Prisma.ProductUncheckedUpdateInput = { ...productData };
     if (productData.name !== undefined) {
       scalarData.normalizedName = normalizeText(productData.name);
+    }
+    // Chỉ cập nhật combo khi admin gửi lên (undefined = không đụng tới)
+    if (comboTiers !== undefined) {
+      scalarData.comboTiers = comboTiers as unknown as Prisma.InputJsonValue;
     }
 
     // Slug CỐ ĐỊNH: đổi tên KHÔNG tự đổi slug. Chỉ cập nhật khi admin chủ động

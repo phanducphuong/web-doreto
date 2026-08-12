@@ -12,7 +12,19 @@ export type TCartItem = {
   product: TExistedProduct;
   optionValue: TOptionValue;
   quantity: number;
+  // ==== Combo (tùy chọn) ====
+  // Dòng thuộc 1 gói combo: các dòng cùng comboKey là 1 gói (mỗi dòng 1 sản phẩm).
+  comboKey?: string;
+  comboUid?: string; // id duy nhất từng dòng combo (để không bị gộp)
+  comboQuantity?: number; // tổng số sản phẩm của bậc combo
+  comboLabel?: string;
+  comboUnitPrice?: number; // giá 1 sản phẩm sau khi chia giá gói (để hiển thị)
+  comboFreeship?: boolean;
 };
+
+// Giá 1 dòng giỏ: combo dùng giá đã chia, thường dùng giá biến thể.
+export const getCartLineUnitPrice = (item: TCartItem): number =>
+  item.comboUnitPrice ?? item.optionValue.price ?? 0;
 
 export type TCartDrawerTab = "cart" | "shipping";
 export const usePurchaseOrderStore = defineStore("purchase-order", () => {
@@ -41,8 +53,12 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
   // Sản phẩm vừa bấm "Mua ngay" khi giỏ đã có hàng — để đưa lên đầu danh sách + gắn nhãn.
   const lastBuyNowKey = ref<string | null>(null);
 
-  const getCartItemKey = (item: Pick<TCartItem, "product" | "optionValue">) =>
-    `${item.product._id}:${item.optionValue._id || ""}`;
+  const getCartItemKey = (
+    item: Pick<TCartItem, "product" | "optionValue" | "comboUid">,
+  ) =>
+    item.comboUid
+      ? `combo:${item.comboUid}`
+      : `${item.product._id}:${item.optionValue._id || ""}`;
 
   const isCartItemSelected = (item: TCartItem) =>
     selectedCartKeys.value.includes(getCartItemKey(item));
@@ -231,7 +247,14 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
         productOptionValueId: item.optionValue._id || "",
         productId: item.product._id,
         count: item.quantity,
-        price: item.optionValue.price || 0,
+        price: getCartLineUnitPrice(item),
+        ...(item.comboKey
+          ? {
+              comboGroupId: item.comboKey,
+              comboQuantity: item.comboQuantity,
+              comboLabel: item.comboLabel,
+            }
+          : {}),
       }));
 
       // Create order payload
@@ -264,13 +287,25 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
         // Convert purchase items to cart items
         const cartItems: TCartItem[] = [];
 
-        for (const purchaseItem of cartOrder.value.purchaseItems) {
+        cartOrder.value.purchaseItems.forEach((purchaseItem, index) => {
+          const optionValue = purchaseItem.productOptionValue!;
+          // Snapshot combo được BE nhét vào biến thể ở __combo (nếu là dòng combo)
+          const combo = (optionValue as unknown as { __combo?: any })?.__combo;
           cartItems.push({
             product: purchaseItem.product!,
-            optionValue: purchaseItem.productOptionValue!,
+            optionValue,
             quantity: purchaseItem.count,
+            ...(combo
+              ? {
+                  comboKey: String(combo.groupId ?? ""),
+                  comboUid: `${combo.groupId ?? "combo"}:${index}`,
+                  comboQuantity: combo.quantity ?? undefined,
+                  comboLabel: combo.label ?? undefined,
+                  comboUnitPrice: purchaseItem.price,
+                }
+              : {}),
           });
-        }
+        });
 
         listCartProduct.value = cartItems;
         selectAllCartItems();
@@ -301,8 +336,12 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
       loadingStates.value.addToCart = true;
 
       // Check if product with option value already exists in cart
+      // (bỏ qua dòng combo — combo không gộp với mua lẻ)
       const existingIndex = listCartProduct.value.findIndex(
-        (item) => item.product._id === product._id && item.optionValue._id === optionValue._id,
+        (item) =>
+          !item.comboKey &&
+          item.product._id === product._id &&
+          item.optionValue._id === optionValue._id,
       );
 
       if (existingIndex !== -1) {
@@ -327,6 +366,72 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
     } finally {
       loadingStates.value.addToCart = false;
     }
+  };
+
+  // Thêm 1 gói combo vào giỏ: mỗi sản phẩm trong gói = 1 dòng count=1, chung comboKey.
+  // Giá gói chia đều cho từng dòng (phần dư dồn dòng đầu) để hiển thị tổng đúng;
+  // BE sẽ tự áp lại giá combo khi đặt hàng.
+  let comboCounter = 0;
+  const addComboToCart = async (
+    product: TExistedProduct,
+    comboTier: { quantity: number; price: number; label?: string; freeship?: boolean },
+    unitOptionValues: TOptionValue[],
+  ): Promise<boolean | undefined> => {
+    try {
+      loadingStates.value.addToCart = true;
+      const n = unitOptionValues.length;
+      if (!n) return false;
+
+      const total = Math.max(0, Math.round(comboTier.price));
+      const base = Math.floor(total / n);
+      const remainder = total - base * n;
+      const comboKey = `${product._id}-c${++comboCounter}-${listCartProduct.value.length}`;
+      const label = comboTier.label?.trim() || `Combo ${n} sản phẩm`;
+
+      unitOptionValues.forEach((optionValue, index) => {
+        const line: TCartItem = {
+          product,
+          optionValue,
+          quantity: 1,
+          comboKey,
+          comboUid: `${comboKey}:${index}`,
+          comboQuantity: n,
+          comboLabel: label,
+          comboUnitPrice: base + (index < remainder ? 1 : 0),
+          comboFreeship: !!comboTier.freeship,
+        };
+        listCartProduct.value.push(line);
+        selectedCartKeys.value.push(getCartItemKey(line));
+      });
+
+      $tracking?.trackEvent("add_to_cart", { productId: String(product._id) });
+
+      const res = await syncCart();
+      return res;
+    } catch (error) {
+      console.error("Add combo to cart failed", error);
+      return false;
+    } finally {
+      loadingStates.value.addToCart = false;
+    }
+  };
+
+  // Xóa 1 dòng giỏ; nếu là dòng combo thì xóa cả gói (mọi dòng cùng comboKey).
+  const removeCartItem = (item: TCartItem) => {
+    if (item.comboKey) {
+      const removedKeys = listCartProduct.value
+        .filter((line) => line.comboKey === item.comboKey)
+        .map(getCartItemKey);
+      listCartProduct.value = listCartProduct.value.filter(
+        (line) => line.comboKey !== item.comboKey,
+      );
+      selectedCartKeys.value = selectedCartKeys.value.filter(
+        (key) => !removedKeys.includes(key),
+      );
+      syncCart();
+      return;
+    }
+    removeProductFromCart(item.product._id, item.optionValue._id || "", "removeAll");
   };
 
   const removeProductFromCart = (
@@ -438,7 +543,14 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
       productOptionValueId: item.optionValue._id || "",
       productId: item.product._id,
       count: item.quantity,
-      price: item.optionValue.price || 0,
+      price: getCartLineUnitPrice(item),
+      ...(item.comboKey
+        ? {
+            comboGroupId: item.comboKey,
+            comboQuantity: item.comboQuantity,
+            comboLabel: item.comboLabel,
+          }
+        : {}),
     }));
 
     // Attribution first-touch (phase 37) — phủ cả create (guest/mua ngay) lẫn
@@ -484,7 +596,9 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
     loadCartFromServer,
     initializeCart,
     addProductToCart,
+    addComboToCart,
     removeProductFromCart,
+    removeCartItem,
     clearCartState,
     removeOrderedItemsFromCart,
     setCartDrawerOpen,

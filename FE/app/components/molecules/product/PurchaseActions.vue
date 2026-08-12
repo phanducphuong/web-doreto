@@ -34,7 +34,7 @@
         </span>
       </div>
       <!--* STOCK + QUANTITY MOBILE -->
-      <div v-if="isMobileLayout && !!type" class="flex items-center gap-2">
+      <div v-if="!hasCombo && isMobileLayout && !!type" class="flex items-center gap-2">
         <div class="w-fit flex items-center rounded-lg bg-surface-container-highest p-1">
           <button
             class="h-5 w-5 center-child cursor-pointer bg-transparent text-stone-400 hover:text-on-surface disabled:(cursor-not-allowed opacity-50 hover:text-stone-400)"
@@ -73,9 +73,12 @@
     class="space-y-5 rounded-xl p-3 -mx-3 lg:(bg-surface-container-low p-4 space-y-4 mx-0)"
     :class="{ 'ring-1 ring-danger': validateMsg }"
   >
+    <!-- * COMBO (mua theo gói: chọn combo → màu → size) -->
+    <MoleculesProductComboPurchase v-if="hasCombo" :product="product" />
+
     <!-- * CHỌN OPTION PRODUCT -->
     <AtomsSelectOptionProduct
-      v-if="product.optionValues?.length && product.productOptions?.length > 0"
+      v-if="!hasCombo && product.optionValues?.length && product.productOptions?.length > 0"
       id="product-option-picker"
       :product="product"
       class="max-md:(border-b border-outline-variant pb-4) scroll-mt-24"
@@ -83,7 +86,7 @@
     />
 
     <!-- * QUANTITY -->
-    <div v-if="!isMobileLayout" class="flex flex-wrap items-center justify-between gap-3">
+    <div v-if="!hasCombo && !isMobileLayout" class="flex flex-wrap items-center justify-between gap-3">
       <AtomsBadge :type="priceData.stockCount > 0 ? 'success' : 'error'">
         <div
           class="mr-2 h-2 w-2 rounded-full"
@@ -111,7 +114,7 @@
     </div>
 
     <!-- * CTA -->
-    <div class="grid grid-cols-1 gap-3 pt-2 font-bold sm:(grid-cols-2 gap-4 pt-4)">
+    <div v-if="!hasCombo" class="grid grid-cols-1 gap-3 pt-2 font-bold sm:(grid-cols-2 gap-4 pt-4)">
       <AtomsButton
         v-if="type !== 'buy-now'"
         type="secondary"
@@ -189,6 +192,7 @@ const toast = useToast();
 const { isLg } = useDeviceBreakpoint();
 
 const isMobileLayout = computed(() => !isLg.value);
+const hasCombo = computed(() => (props.product.comboTiers?.length ?? 0) > 0);
 const injectedSelection = inject(PRODUCT_OPTION_SELECTION_KEY, null);
 
 const existedOptionValues = ref<TOptionValue[]>(

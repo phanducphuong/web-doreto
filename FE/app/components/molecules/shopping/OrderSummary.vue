@@ -52,6 +52,13 @@
               {{ getDetailText(item.product, item.optionValue) }}
             </p>
             <AtomsBadge
+              v-if="item.comboKey"
+              type="success"
+              class="mb-0.5 w-fit rounded-md !p-(x-1.5 y-0.5) !text-10px"
+            >
+              {{ item.comboLabel || "Combo" }}
+            </AtomsBadge>
+            <AtomsBadge
               v-if="!isBuyNowMode && lastBuyNowKey === getCartItemKey(item)"
               type="info"
               class="mb-0.5 w-fit rounded-md !p-(x-1.5 y-0.5) !text-10px"
@@ -59,8 +66,15 @@
               Vừa chọn
             </AtomsBadge>
             <div class="flex items-center justify-between gap-2">
-              <!-- Cộng / trừ số lượng -->
+              <!-- Dòng combo: số lượng cố định; dòng thường: cộng/trừ -->
               <div
+                v-if="item.comboKey"
+                class="rounded-full bg-success-container/30 px-2.5 py-1 text-10px font-semibold text-success sm:text-xs"
+              >
+                Trong combo · 1 sản phẩm
+              </div>
+              <div
+                v-else
                 class="flex w-fit items-center gap-1 rounded-full border border-outline-variant/60 bg-white px-1 py-0.5 leading-none"
               >
                 <button
@@ -86,7 +100,7 @@
                 </button>
               </div>
               <span class="text-sm text-primary font-bold sm:text-base">
-                {{ formatPrice(item.optionValue.price * item.quantity) }}
+                {{ formatPrice(getCartLineUnitPrice(item) * item.quantity) }}
               </span>
             </div>
           </div>
@@ -138,7 +152,7 @@
 
 <script lang="ts" setup>
 import { Check, Minus, Plus, X } from "lucide-vue-next";
-import type { TCartItem } from "~/stores/purchase-order.store";
+import { getCartLineUnitPrice, type TCartItem } from "~/stores/purchase-order.store";
 
 const emit = defineEmits(["nextTab", "submit"]);
 
@@ -149,6 +163,7 @@ const {
   toggleCartItemSelected,
   addProductToCart,
   removeProductFromCart,
+  removeCartItem,
   updateBuyNowQuantity,
 } = usePurchaseOrderStore();
 const { checkoutItems, listCartProduct, buyNowItem, lastBuyNowKey } = storeToRefs(
@@ -187,12 +202,12 @@ const decreaseQty = (item: TCartItem) => {
 };
 
 const removeItem = (item: TCartItem) => {
-  removeProductFromCart(item.product._id, item.optionValue._id || "", "removeAll");
+  removeCartItem(item);
 };
 
 const sumaryProductPrice = computed(() =>
   checkoutItems.value.reduce((acc, item) => {
-    acc += item.quantity * item.optionValue.price;
+    acc += item.quantity * getCartLineUnitPrice(item);
     return acc;
   }, 0),
 );

@@ -500,6 +500,108 @@
         </div>
       </section>
 
+      <section class="space-y-5">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <p class="section-title mb-0">Combo theo số lượng</p>
+          <AtomsButton
+            v-if="isEdit"
+            type="link"
+            class="ml-auto font-semibold"
+            @click="addComboTier"
+          >
+            Thêm bậc combo
+          </AtomsButton>
+        </div>
+        <p class="text-xs text-on-surface-variant">
+          Bậc giá theo TỔNG số sản phẩm khách mua (mua N cái = giá gói). Ví dụ: 1 cái, combo 2 cái
+          (freeship), combo 3 cái… Khách chọn combo trước, rồi chọn màu cho từng cái, size chọn 1
+          lần. Bỏ trống nếu sản phẩm không bán theo combo.
+        </p>
+
+        <div v-if="(productForm.comboTiers || []).length" class="overflow-x-auto">
+          <table class="w-full min-w-[720px] border-collapse">
+            <thead>
+              <tr
+                class="border-b border-#E4D4D1 text-left text-xs uppercase tracking-[0.06em] text-#8B7B78"
+              >
+                <th class="py-3 w-28">Số lượng</th>
+                <th class="py-3">Giá combo</th>
+                <th class="py-3">Giá gốc</th>
+                <th class="py-3 w-24 text-center">Freeship</th>
+                <th class="py-3">Nhãn (tùy chọn)</th>
+                <th class="py-3 text-right">Tác vụ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(tier, tierIndex) in productForm.comboTiers"
+                :key="tierIndex"
+                class="border-b border-#EEE5E3 align-top"
+              >
+                <td class="py-4 pr-3">
+                  <AtomsFormInput
+                    v-model="tier.quantity"
+                    :disabled="!isEdit"
+                    type="number"
+                    placeholder="VD: 2"
+                  />
+                </td>
+                <td class="py-4 pr-3">
+                  <AtomsFormInput
+                    v-model="tier.price"
+                    :disabled="!isEdit"
+                    placeholder="Giá gói"
+                    :format="formatPrice"
+                    :parse="parsePrice"
+                  />
+                </td>
+                <td class="py-4 pr-3">
+                  <AtomsFormInput
+                    v-model="tier.originalPrice"
+                    :disabled="!isEdit"
+                    placeholder="Giá gạch"
+                    :format="formatPrice"
+                    :parse="parsePrice"
+                  />
+                </td>
+                <td class="py-4 pr-3 text-center">
+                  <input
+                    v-model="tier.freeship"
+                    type="checkbox"
+                    :disabled="!isEdit"
+                    class="size-4 accent-primary"
+                  />
+                </td>
+                <td class="py-4 pr-3">
+                  <AtomsFormInput
+                    v-model="tier.label"
+                    :disabled="!isEdit"
+                    placeholder="VD: Combo 2 quần"
+                    maxlength="60"
+                  />
+                </td>
+                <td class="py-4 text-right">
+                  <AtomsButton
+                    v-if="isEdit"
+                    class="w-8 h-8"
+                    type="ghost"
+                    circle
+                    :icon="X"
+                    @click="removeComboTier(tierIndex)"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          v-else
+          class="rounded-lg border border-dashed border-outline-variant p-4 text-center text-xs text-on-surface-variant"
+        >
+          Chưa có bậc combo. Bấm “Thêm bậc combo” để thêm (không bắt buộc).
+        </div>
+      </section>
+
       <section class="space-y-4">
         <p class="section-title mb-0">Sẵn sàng lưu thay đổi</p>
         <div
@@ -601,7 +703,7 @@ import { Check, CheckCircle2, Copy, Crop, Maximize2, Monitor, Plus, Save, Smartp
 import useImageFrame from "~/composables/image-frame.composable";
 import useProduct from "~/composables/product.composable";
 import type { TActiveImageFrame } from "~/types/image-frame.type";
-import type { TExistedProduct } from "~/types/product.type";
+import type { TComboTier, TExistedProduct } from "~/types/product.type";
 import MoleculesCommonModal from "~/components/molecules/common/Modal.vue";
 import { hasError, generateSlug } from "~/utils/data.utils";
 import { getShortProductName, getDisplayPurchaseCount } from "~/utils/product.utils";
@@ -777,6 +879,41 @@ const createDefaultOptionValue = () => ({
   imageFile: [] as File[],
 });
 
+// * COMBO theo tổng số lượng (tầng giá phủ lên biến thể màu/size)
+const createDefaultComboTier = (): TComboTier => ({
+  quantity: 1,
+  price: 0,
+  originalPrice: undefined,
+  freeship: false,
+  label: "",
+});
+
+const addComboTier = () => {
+  productForm.value.comboTiers ||= [];
+  productForm.value.comboTiers.push(createDefaultComboTier());
+};
+
+const removeComboTier = (index: number) => {
+  productForm.value.comboTiers?.splice(index, 1);
+};
+
+// Chuẩn hóa combo trước khi lưu: bỏ dòng trống/không hợp lệ, ép đúng kiểu số.
+const sanitizeComboTiers = () => {
+  productForm.value.comboTiers = (productForm.value.comboTiers || [])
+    .map((tier) => {
+      const original = Number(tier.originalPrice);
+      return {
+        quantity: Math.max(1, Math.floor(Number(tier.quantity) || 0)),
+        price: Number(tier.price) || 0,
+        originalPrice: Number.isFinite(original) && original > 0 ? original : undefined,
+        freeship: !!tier.freeship,
+        label: (tier.label || "").trim() || undefined,
+      };
+    })
+    .filter((tier) => tier.quantity >= 1 && tier.price > 0)
+    .sort((a, b) => a.quantity - b.quantity);
+};
+
 const buildVariantOptionValues = (data?: Partial<TExistedProduct>) => {
   if (!data?.productOptions?.length) return [createOptionDef()];
 
@@ -944,6 +1081,7 @@ const onSubmit = async () => {
   try {
     loadingStates.value.upsert = true;
     syncVariantOptionsToForm();
+    sanitizeComboTiers();
     productForm.value.optionValues?.forEach((optionValue) => {
       if (typeof optionValue.code === "string") {
         const trimmedCode = optionValue.code.trim();
@@ -1290,6 +1428,7 @@ watchEffect(() => {
       categoryIds: defaultData?.categoryIds || [],
       similarProductIds: defaultData?.similarProductIds || [],
       productOptions: defaultData?.productOptions || [],
+      comboTiers: (defaultData?.comboTiers || []).map((tier) => ({ ...tier })),
       imageUrls: defaultData?.imageUrls || [],
       thumbnailUrls: defaultData?.thumbnailUrls || [],
       imageFiles: [],
@@ -1308,6 +1447,7 @@ watchEffect(() => {
       tagIds: [],
       similarProductIds: [],
       productOptions: [],
+      comboTiers: [],
       imageUrls: [],
       thumbnailUrls: [],
       imageFiles: [],

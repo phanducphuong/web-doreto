@@ -130,6 +130,10 @@ model Product {
   isActive       Boolean  @default(true)
   stock          Int      @default(0)
   productOptions String[] @default([])
+  // Bậc combo theo TỔNG số lượng (mua N sản phẩm) lưu riêng theo từng SP.
+  // Mảng JSON: [{ quantity, price, originalPrice?, freeship?, label? }].
+  // Đây là TẦNG GIÁ phủ lên trên biến thể màu/size, không phải biến thể.
+  comboTiers     Json     @default("[]")
   imageUrls      String[] @default([])
   thumbnailUrls  String[] @default([])
   // Khung ảnh áp cho các ảnh trong mô tả ở trang chi tiết (admin chọn khi đăng SP)

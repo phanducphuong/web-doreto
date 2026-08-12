@@ -16,6 +16,16 @@ export type TOptionValue = {
   stock?: number;
 };
 
+// Một bậc combo theo tổng số lượng sản phẩm (mua N cái với giá gói).
+// Tầng giá phủ lên biến thể màu/size — không phải biến thể.
+export type TComboTier = {
+  quantity: number; // số lượng sản phẩm trong combo (1 = mua lẻ)
+  price: number; // giá tổng của cả gói
+  originalPrice?: number; // giá gạch (tùy chọn)
+  freeship?: boolean; // freeship cho bậc này
+  label?: string; // nhãn hiển thị (bỏ trống -> "N sản phẩm")
+};
+
 export type TProduct = {
   _id: string;
   name: string;
@@ -33,6 +43,8 @@ export type TProduct = {
   tagIds: string[];
   similarProductIds?: string[];
   productOptions: string[];
+  // Bậc combo theo tổng số lượng (mua N cái với giá gói), lưu riêng theo SP
+  comboTiers?: TComboTier[];
   optionValueIds: string[];
   optionValues: TOptionValue[];
   normalizedName: string;
