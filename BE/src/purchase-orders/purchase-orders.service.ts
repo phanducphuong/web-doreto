@@ -577,6 +577,27 @@ export class PurchaseOrdersService {
       : undefined;
   }
 
+  /**
+   * Trạng thái được tính vào "đã bán" (purchaseCount): mọi trạng thái TRỪ giỏ (CART)
+   * và đã hủy (CANCELLED). Giữ đúng quy tắc hiện hành (pending cũng tính là đã bán).
+   */
+  private static isCountedStatus(status?: PurchaseOrderStatus): boolean {
+    return (
+      !!status &&
+      status !== PurchaseOrderStatus.CART &&
+      status !== PurchaseOrderStatus.CANCELLED
+    );
+  }
+
+  /**
+   * Cập nhật "đã bán" theo mô hình gỡ-cũ-cộng-mới thay vì bắt từng cặp chuyển đổi.
+   * Đúng cho MỌI trường hợp, kể cả các case trước đây bị lệch:
+   *  - cancel → confirm: trước đây KHÔNG cộng lại → nay cộng lại nextItems.
+   *  - sửa items khi giữ nguyên status (đơn confirmed): trước đây return sớm →
+   *    nay trừ items cũ, cộng items mới = điều chỉnh đúng phần chênh.
+   * Nếu trước và sau đều không-được-tính (CART→CART) hoặc đều được tính & items y hệt
+   * thì tổng delta = 0 (an toàn, chỉ tốn vài lệnh increment trong cùng transaction).
+   */
   private async handleInventoryOnStatusTransition(
     tx: Prisma.TransactionClient,
     previousStatus: PurchaseOrderStatus | undefined,
@@ -584,27 +605,12 @@ export class PurchaseOrdersService {
     previousItems: SnapshotItem[],
     nextItems: SnapshotItem[],
   ) {
-    if (!previousStatus || !nextStatus || previousStatus === nextStatus) {
-      return;
-    }
+    const wasCounted = PurchaseOrdersService.isCountedStatus(previousStatus);
+    const isCounted = PurchaseOrdersService.isCountedStatus(nextStatus);
 
-    const movedOutFromCart =
-      previousStatus === PurchaseOrderStatus.CART &&
-      nextStatus !== PurchaseOrderStatus.CART &&
-      nextStatus !== PurchaseOrderStatus.CANCELLED;
-
-    if (movedOutFromCart) {
-      await this.applyInventoryDelta(tx, nextItems, -1);
-      return;
-    }
-
-    const movedToCancelledFromNonCart =
-      previousStatus !== PurchaseOrderStatus.CART &&
-      nextStatus === PurchaseOrderStatus.CANCELLED;
-
-    if (movedToCancelledFromNonCart) {
-      await this.applyInventoryDelta(tx, previousItems, 1);
-    }
+    // Gỡ đóng góp cũ (nếu trước đây được tính) rồi cộng đóng góp mới (nếu giờ được tính).
+    if (wasCounted) await this.applyInventoryDelta(tx, previousItems, 1);
+    if (isCounted) await this.applyInventoryDelta(tx, nextItems, -1);
   }
 
   private async applyInventoryDelta(

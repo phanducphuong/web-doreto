@@ -22,14 +22,20 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Public } from 'src/common/decorators/public.decorator';
 import { PurchaseOrderStatus } from 'src/common/enums/purchase-order.enum';
 import type { AuthUser } from 'src/@types/auth.types';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 @UseGuards(JwtAuthGuard)
 @Controller('purchase-orders')
 export class PurchaseOrdersController {
   constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
 
+  // Tạo đơn/giỏ gọi trực tiếp từ trình duyệt → siết 30 lần/phút/IP để chống khách
+  // vãng lai bơm đơn "pending" hàng loạt (thổi số "đã bán" + spam lead sang CRM).
+  // Ngưỡng cao hơn nhiều so với nhịp mua thật của người dùng.
   @Post()
   @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   create(
     @Body() createPurchaseOrderDto: CreatePurchaseOrderDto,
     @CurrentUser() user: AuthUser | null,
