@@ -196,6 +196,7 @@ import { usePurchaseOrderStore } from "~/stores/purchase-order.store";
 import { formatPrice } from "~/utils/data.utils";
 
 const props = defineProps<{ product: TExistedProduct }>();
+const emit = defineEmits<{ (e: "added-to-cart"): void; (e: "buy-now"): void }>();
 
 const toast = useToast();
 const { addComboToCart, setCartDrawerInitialTab, setCartDrawerOpen } = usePurchaseOrderStore();
@@ -350,32 +351,35 @@ const buildValidateMsg = () => {
   return "";
 };
 
-const commitCombo = async (): Promise<boolean> => {
+// Trả về {tier, units} nếu lựa chọn hợp lệ, ngược lại null (kèm thông báo lỗi).
+const getComboSelection = () => {
   validateMsg.value = buildValidateMsg();
-  if (!isComplete.value || !selectedTier.value) return false;
-
-  const units = unitOptionValues.value.filter(Boolean) as TOptionValue[];
-  const res = await addComboToCart(
-    props.product,
-    {
+  if (!isComplete.value || !selectedTier.value) return null;
+  return {
+    tier: {
       quantity: needQty.value,
       price: selectedTier.value.price,
       label: selectedTier.value.label,
       freeship: selectedTier.value.freeship,
     },
-    units,
-  );
-  return Boolean(res) || res === undefined;
+    units: unitOptionValues.value.filter(Boolean) as TOptionValue[],
+  };
 };
 
 const handleAddToCart = async () => {
-  const ok = await commitCombo();
-  if (ok) toast.success({ message: "Đã thêm combo vào giỏ hàng" });
+  const sel = getComboSelection();
+  if (!sel) return;
+  const res = await addComboToCart(props.product, sel.tier, sel.units);
+  if (res || res === undefined) toast.success({ message: "Đã thêm combo vào giỏ hàng" });
 };
 
 const handleBuyNow = async () => {
-  const ok = await commitCombo();
-  if (!ok) return;
+  const sel = getComboSelection();
+  if (!sel) return;
+  const res = await addComboToCart(props.product, sel.tier, sel.units);
+  if (!(res || res === undefined)) return;
+  // Đóng popup chọn sản phẩm (mobile) TRƯỚC khi mở popup thanh toán → hết bị đè.
+  emit("buy-now");
   setCartDrawerInitialTab("shipping");
   setCartDrawerOpen(true);
 };

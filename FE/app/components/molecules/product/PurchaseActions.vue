@@ -74,7 +74,12 @@
     :class="{ 'ring-1 ring-danger': validateMsg }"
   >
     <!-- * COMBO (mua theo gói: chọn combo → màu → size) -->
-    <MoleculesProductComboPurchase v-if="hasCombo" :product="product" />
+    <MoleculesProductComboPurchase
+      v-if="hasCombo"
+      :product="product"
+      @added-to-cart="emit('added-to-cart')"
+      @buy-now="emit('buy-now')"
+    />
 
     <!-- * CHỌN OPTION PRODUCT -->
     <AtomsSelectOptionProduct
