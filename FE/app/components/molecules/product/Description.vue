@@ -4,40 +4,16 @@
       <h2 class="mb-3 font-semibold text-lg text-on-surface md:(mb-4 text-xl)">
         Giới thiệu về sản phẩm này
       </h2>
-      <div class="relative">
-        <div
-          ref="contentRef"
-          class="product-description relative text-base text-on-surface-variant py-2"
-          :class="{
-            'max-h-[400vh] md:max-h-[300vh] overflow-hidden': visuallyCollapsed,
-            'max-h-none': !visuallyCollapsed,
-          }"
-          v-html="optimizedDescription"
-        />
-        <div
-          v-if="visuallyCollapsed && canCollapse"
-          class="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-bg-body to-transparent"
-          aria-hidden="true"
-        />
-      </div>
-      <AtomsButton
-        v-if="canCollapse"
-        type="link"
-        class="mx-auto mt-4 flex items-center gap-2 !text-lg font-bold text-primary md:!text-xl"
-        @click="isShowFullDescription = !isShowFullDescription"
-      >
-        {{ isShowFullDescription ? "Rút gọn" : "Xem thêm chi tiết" }}
-        <ChevronDown
-          class="size-5 shrink-0 transition-transform duration-200 md:size-6"
-          :class="isShowFullDescription ? 'rotate-180' : 'rotate-0'"
-        />
-      </AtomsButton>
+      <div
+        ref="contentRef"
+        class="product-description relative text-base text-on-surface-variant py-2"
+        v-html="optimizedDescription"
+      />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ChevronDown } from "lucide-vue-next";
 import type { TImageLightboxSlide } from "~/types/image-lightbox.type";
 import type { TActiveImageFrame } from "~/types/image-frame.type";
 import {
@@ -71,10 +47,6 @@ const optimizedDescription = computed(() =>
       "<video playsinline webkit-playsinline ",
     ),
 );
-const isShowFullDescription = ref(false);
-const canCollapse = ref(false);
-const hasMeasured = ref(false);
-
 const activeFramesMap = computed(() => {
   const map = new Map<number, TActiveImageFrame>();
   props.activeFrames?.forEach((frame) => map.set(frame._id, frame));
@@ -83,29 +55,6 @@ const activeFramesMap = computed(() => {
   }
   return map;
 });
-
-const visuallyCollapsed = computed(
-  () => !hasMeasured.value || (canCollapse.value && !isShowFullDescription.value),
-);
-
-function updateCanCollapse() {
-  const el = contentRef.value;
-  if (!el) {
-    canCollapse.value = false;
-    hasMeasured.value = true;
-    return;
-  }
-  canCollapse.value = el.scrollHeight > el.clientHeight + 1;
-  hasMeasured.value = true;
-}
-
-function measure() {
-  hasMeasured.value = false;
-  isShowFullDescription.value = false;
-  nextTick(() => {
-    updateCanCollapse();
-  });
-}
 
 function applyDescriptionFrames() {
   const container = contentRef.value;
@@ -390,7 +339,6 @@ const onDescriptionClick = (event: MouseEvent) => {
 
 onMounted(() => {
   applyDescriptionFrames();
-  measure();
   optimizeDescriptionMedia();
   enhanceVideoControls();
   setupVideoAutoplay();
@@ -408,7 +356,6 @@ watch(
   () => {
     nextTick(() => {
       applyDescriptionFrames();
-      measure();
       optimizeDescriptionMedia();
       enhanceVideoControls();
       setupVideoAutoplay();
