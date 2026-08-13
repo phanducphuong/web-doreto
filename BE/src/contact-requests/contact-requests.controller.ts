@@ -22,6 +22,7 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ContactSpamKind } from '@prisma/client';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 @UseGuards(JwtAuthGuard)
 @Controller('contact-requests')
@@ -30,8 +31,12 @@ export class ContactRequestsController {
     private readonly contactRequestsService: ContactRequestsService,
   ) {}
 
+  // Form liên hệ công khai gọi từ trình duyệt → siết 5 lần/phút/IP chống spam
+  // (mỗi liên hệ còn bắn webhook sang CRM nên spam ở đây lan sang CRM).
   @Public()
   @Post()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   create(@Body() body: CreateContactRequestDto) {
     return this.contactRequestsService.create(body);
   }

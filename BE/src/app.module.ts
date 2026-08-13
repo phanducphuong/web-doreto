@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -33,6 +34,11 @@ import { AnalyticsModule } from './analytics/analytics.module';
       // .env.local (bí mật local, không lên git) được nạp trước .env
       envFilePath: ['.env.local', '.env'],
     }),
+    // Chống brute-force/spam. CỐ Ý không đặt guard toàn cục: khi FE render SSR, mọi
+    // request tới BE đều từ 1 IP server FE → guard toàn cục sẽ chặn nhầm cả site.
+    // Chỉ gắn ThrottlerGuard ở các endpoint gọi TRỰC TIẾP từ trình duyệt (signin,
+    // contact, tracking) nơi IP là của khách thật. Cấu hình mặc định để module tồn tại.
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     PrismaModule,
     AuthModule,
     UsersModule,

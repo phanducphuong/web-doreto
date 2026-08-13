@@ -1,11 +1,15 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   try {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    // Sau Cloud Run/LB: tin proxy để req.ip lấy IP khách thật (X-Forwarded-For),
+    // cần cho rate limit theo IP hoạt động đúng.
+    app.set('trust proxy', true);
     // Whitelist origin thay vì '*'. Domain production lấy từ env CORS_ORIGINS
     // (phân tách bằng dấu phẩy). Ở dev (NODE_ENV != production) cho phép MỌI origin
     // localhost/127.0.0.1 vì cổng FE dev thay đổi (autoPort 3000/3200/4000…).

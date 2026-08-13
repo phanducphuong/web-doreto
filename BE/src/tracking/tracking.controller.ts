@@ -16,6 +16,7 @@ import { TrackingService } from './tracking.service';
 import { TrackPageViewDto } from './dto/track-page-view.dto';
 import { TrackEventDto } from './dto/track-event.dto';
 import { TRACKING_REPORT_MAX_RANGE_DAYS } from './tracking.constants';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 const DATE_STRING_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,9 +25,13 @@ const DATE_STRING_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}
 
-  // Ingest từ trình duyệt khách — public, fail-silent trong service (D-07)
+  // Ingest từ trình duyệt khách — public, fail-silent trong service (D-07).
+  // page_views/visitor_events là bảng append-only → siết 120 lần/phút/IP chống
+  // bơm phồng DB (duyệt web bình thường không chạm ngưỡng này).
   @Public()
   @Post('page-view')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   trackPageView(
     @Body() body: TrackPageViewDto,
     @Headers('user-agent') userAgent?: string,
@@ -36,6 +41,8 @@ export class TrackingController {
 
   @Public()
   @Post('event')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   trackEvent(
     @Body() body: TrackEventDto,
     @Headers('user-agent') userAgent?: string,

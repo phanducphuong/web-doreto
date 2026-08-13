@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SignInDto } from './dto/sign-in.dto';
 import { SignUpDto } from './dto/sign-up.dto';
@@ -9,12 +10,18 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // signup/signin gọi trực tiếp từ trình duyệt (IP khách thật) → siết 5 lần/phút/IP
+  // để chống brute-force mật khẩu và spam tạo tài khoản.
   @Post('signup')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   signUp(@Body() body: SignUpDto) {
     return this.authService.signUp(body);
   }
 
   @Post('signin')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   signIn(@Body() body: SignInDto) {
     return this.authService.signIn(body);
   }
