@@ -89,8 +89,9 @@ useBreadcrumbSchema([{ name: "Trang chủ", path: "/" }]);
 const { $productRepository } = useNuxtApp();
 const { productQuery } = storeToRefs(useAppStore());
 
-// Trang chủ luôn hiện toàn bộ sản phẩm (không lọc danh mục), bộ lọc sắp xếp dùng chung với trang sản phẩm
+// Trang chủ luôn hiện toàn bộ sản phẩm (không lọc danh mục, không giữ từ khóa tìm kiếm cũ)
 productQuery.value.categoryId = undefined;
+productQuery.value.keyword = undefined;
 productQuery.value.page = 1;
 
 const { data: homeProducts, status } = await useAsyncData(

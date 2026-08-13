@@ -62,6 +62,8 @@ if (route.name === "danh-muc") {
   productQuery.value.categoryId = undefined;
 }
 
+// Rời trang tìm kiếm phải bỏ từ khóa cũ, không thì danh sách bị lọc ngầm
+productQuery.value.keyword = undefined;
 productQuery.value.page = 1;
 
 // * COMPUTED
