@@ -9,6 +9,12 @@ const createPurchaseOrderRepository = ($api: typeof $fetch) => ({
       method: "get",
       params,
     }),
+  // Đơn của user đủ điều kiện đánh giá 1 sản phẩm (BE lọc theo productId + trạng thái)
+  getFeedbackEligibleOrders: async (productId: string) =>
+    $api<TExistedPurchaseOrder[]>(`/purchase-orders/eligible-feedback`, {
+      method: "get",
+      params: { productId },
+    }),
 });
 
 export default createPurchaseOrderRepository;

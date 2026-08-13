@@ -374,6 +374,31 @@ export class PurchaseOrdersService {
     return this.paginate({ userId }, page, limit);
   }
 
+  /**
+   * Các đơn của user đủ điều kiện đánh giá 1 sản phẩm: trạng thái confirmed/shipped/
+   * delivered VÀ có chứa sản phẩm đó. Lọc thẳng ở DB thay vì FE kéo 100 đơn rồi lọc
+   * (khách >100 đơn sẽ mất quyền đánh giá vì đơn cũ rơi ngoài trang 1).
+   */
+  async findFeedbackEligibleOrders(userId: string, productId: string) {
+    if (!productId) return [];
+    const orders = await this.prisma.purchaseOrder.findMany({
+      where: {
+        userId,
+        status: {
+          in: [
+            PurchaseOrderStatus.CONFIRMED,
+            PurchaseOrderStatus.SHIPPED,
+            PurchaseOrderStatus.DELIVERED,
+          ] as PrismaStatus[],
+        },
+        purchaseItems: { some: { productId } },
+      },
+      include: ORDER_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return orders.map((order) => this.shape(order));
+  }
+
   async findAllPaginated(
     page: number = 1,
     limit: number = 10,

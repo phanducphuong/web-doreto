@@ -1,14 +1,8 @@
 import { FEEDBACK_MESSAGES, FEEDBACK_QUERY_KEYS } from "~/constants/feedback.constant";
-import { PurchaseOrderStatus } from "~/types/purchase-order.type";
 import type { TFeedback } from "~/types/feedback.type";
 import type { TExistedPurchaseOrder, TPurchaseItem } from "~/types/purchase-order.type";
 import { getApiErrorMessage } from "~/utils/api-error";
-import {
-  getEntityId,
-  isAdminUser,
-  isHttpErrorStatus,
-  isPurchasedOrderStatus,
-} from "~/utils/feedback.utils";
+import { getEntityId, isAdminUser, isHttpErrorStatus } from "~/utils/feedback.utils";
 
 export default function useMyFeedback(productId: MaybeRefOrGetter<number | string | undefined>) {
   const { $feedbackRepository, $purchaseOrderRepository } = useNuxtApp();
@@ -66,16 +60,12 @@ export default function useMyFeedback(productId: MaybeRefOrGetter<number | strin
 
     void purchaseKey.value;
 
-    const response = await $purchaseOrderRepository.getPurchaseOrdersByUser({
-      page: 1,
-      limit: 100,
-    });
-    const ordersWithProduct = response.data.filter((order) => {
-      if (!isPurchasedOrderStatus(order.status as PurchaseOrderStatus)) return false;
-      return order.purchaseItems.some(
-        (item) => String(item.productId) === String(normalizedProductId.value),
-      );
-    });
+    // BE lọc thẳng theo productId + trạng thái đủ điều kiện đánh giá (confirmed/
+    // shipped/delivered). Trước đây kéo 100 đơn đầu rồi lọc client → khách >100 đơn
+    // mất quyền đánh giá vì đơn mua SP này rơi ngoài trang 1.
+    const ordersWithProduct = await $purchaseOrderRepository.getFeedbackEligibleOrders(
+      String(normalizedProductId.value),
+    );
     matchedOrder.value = ordersWithProduct[0] ?? null;
 
     // Dùng cho action gửi feedback mới (BE yêu cầu order chưa feedback)

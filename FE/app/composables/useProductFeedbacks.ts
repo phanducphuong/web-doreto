@@ -12,94 +12,92 @@ export default function useProductFeedbacks(
 ) {
   const { $feedbackRepository } = useNuxtApp();
 
-  const feedbacks = ref<TFeedback[]>([]);
-  const summary = ref<TFeedbackSummary>({ averageRating: 0, ratingCount: 0 });
-  const isLoadingList = ref(false);
-  const isLoadingSummary = ref(false);
-  const listError = ref("");
-  const summaryError = ref("");
-
-  const listKey = computed(() => FEEDBACK_QUERY_KEYS.list(toValue(productId) || "unknown"));
-  const summaryKey = computed(() => FEEDBACK_QUERY_KEYS.summary(toValue(productId) || "unknown"));
-
   const normalizedProductId = computed(() => {
     const value = toValue(productId);
     if (value === undefined || value === null || value === "") return null;
-
     // Id sản phẩm là UUID (Postgres); vẫn nhận id số của hệ cũ
     return String(value);
   });
 
-  const fetchFeedbacks = async () => {
-    if (normalizedProductId.value === null) {
-      feedbacks.value = [];
-      return;
-    }
+  const listKey = computed(() =>
+    FEEDBACK_QUERY_KEYS.list(normalizedProductId.value || "unknown"),
+  );
+  const summaryKey = computed(() =>
+    FEEDBACK_QUERY_KEYS.summary(normalizedProductId.value || "unknown"),
+  );
 
-    try {
-      void listKey.value;
-      isLoadingList.value = true;
-      listError.value = "";
-      const response = await $feedbackRepository.getProductFeedbacks(normalizedProductId.value);
-      feedbacks.value = sortFeedbacksByOldest(response);
-    } catch (error) {
-      listError.value = getApiErrorMessage(error, FEEDBACK_MESSAGES.loadListFailed);
-    } finally {
-      isLoadingList.value = false;
-    }
-  };
+  // Nạp bằng useAsyncData → chạy TRÊN SERVER (SSR) và chuyển payload xuống client,
+  // không fetch lại khi hydrate. Trước đây dùng watch immediate (chỉ chạy ở client)
+  // nên HTML SSR không có nội dung đánh giá → Google không thấy review + nhấp nháy skeleton.
+  const {
+    data: feedbacksData,
+    pending: isLoadingList,
+    error: listErrorRaw,
+    refresh: refreshList,
+  } = useAsyncData<TFeedback[]>(
+    listKey.value,
+    async () => {
+      if (normalizedProductId.value === null) return [];
+      const response = await $feedbackRepository.getProductFeedbacks(
+        normalizedProductId.value,
+      );
+      return sortFeedbacksByOldest(response);
+    },
+    { default: () => [], watch: [normalizedProductId] },
+  );
 
-  const fetchSummary = async () => {
-    if (normalizedProductId.value === null) {
-      summary.value = { averageRating: 0, ratingCount: 0 };
-      return;
-    }
-
-    try {
-      void summaryKey.value;
-      isLoadingSummary.value = true;
-      summaryError.value = "";
+  const {
+    data: summaryData,
+    pending: isLoadingSummary,
+    error: summaryErrorRaw,
+    refresh: refreshSummary,
+  } = useAsyncData<TFeedbackSummary>(
+    summaryKey.value,
+    async () => {
+      if (normalizedProductId.value === null) {
+        return { averageRating: 0, ratingCount: 0 };
+      }
       const response = await $feedbackRepository.getProductFeedbackAverage(
         normalizedProductId.value,
       );
-      summary.value = normalizeFeedbackSummary(response);
-    } catch (error) {
-      summaryError.value = getApiErrorMessage(error, FEEDBACK_MESSAGES.loadSummaryFailed);
-    } finally {
-      isLoadingSummary.value = false;
-    }
-  };
+      return normalizeFeedbackSummary(response);
+    },
+    { default: () => ({ averageRating: 0, ratingCount: 0 }), watch: [normalizedProductId] },
+  );
+
+  // feedbacks/summary là ref có thể sửa cục bộ (khi khách vừa gửi/xóa đánh giá).
+  const feedbacks = feedbacksData as Ref<TFeedback[]>;
+  const summary = summaryData as Ref<TFeedbackSummary>;
+
+  const listError = computed(() =>
+    listErrorRaw.value
+      ? getApiErrorMessage(listErrorRaw.value, FEEDBACK_MESSAGES.loadListFailed)
+      : "",
+  );
+  const summaryError = computed(() =>
+    summaryErrorRaw.value
+      ? getApiErrorMessage(summaryErrorRaw.value, FEEDBACK_MESSAGES.loadSummaryFailed)
+      : "",
+  );
 
   const refresh = async () => {
-    await Promise.all([fetchFeedbacks(), fetchSummary()]);
+    await Promise.all([refreshList(), refreshSummary()]);
   };
 
   const upsertLocalFeedback = (feedback: TFeedback) => {
-    feedbacks.value = upsertFeedbackInList(feedbacks.value, feedback);
+    feedbacks.value = upsertFeedbackInList(feedbacks.value ?? [], feedback);
   };
 
   const removeLocalFeedback = (feedbackId: string | number) => {
-    feedbacks.value = feedbacks.value.filter((item) => String(item._id) !== String(feedbackId));
+    feedbacks.value = (feedbacks.value ?? []).filter(
+      (item) => String(item._id) !== String(feedbackId),
+    );
   };
-
-  watch(
-    normalizedProductId,
-    async (value) => {
-      if (value === null) {
-        feedbacks.value = [];
-        summary.value = { averageRating: 0, ratingCount: 0 };
-        return;
-      }
-
-      await refresh();
-    },
-    { immediate: true },
-  );
 
   return {
     feedbacks,
-    fetchFeedbacks,
-    fetchSummary,
+    fetchFeedbacks: refreshList,
+    fetchSummary: refreshSummary,
     isLoadingList,
     isLoadingSummary,
     listError,

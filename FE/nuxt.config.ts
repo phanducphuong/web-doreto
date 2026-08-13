@@ -51,17 +51,26 @@ export default defineNuxtConfig({
       link: [
         { rel: "preconnect", href: "https://fonts.googleapis.com" },
         { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
+        // TikTok Sans dùng cho một số thành phần UI → giữ tải chặn để không nhấp nháy.
         {
           rel: "stylesheet",
           href: "https://fonts.googleapis.com/css2?family=TikTok+Sans:opsz,wght@12..36,300..900&display=swap",
         },
+        // 10 họ font này CHỈ là danh sách font-picker của editor (mô tả sản phẩm) —
+        // không cần cho hiển thị trang chủ/danh sách. Tải KHÔNG chặn render bằng mẹo
+        // media="print" + onload: trang paint ngay, font áp sau khi tải xong (mô tả
+        // có chọn font vẫn hiện đúng, chỉ swap nhẹ). Bỏ 2 request render-blocking.
         {
           rel: "stylesheet",
           href: "https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Roboto:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&family=Lato:wght@400;700&family=Nunito+Sans:wght@400;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=Mulish:wght@400;500;600;700&display=swap",
+          media: "print",
+          onload: "this.media='all'",
         },
         {
           rel: "stylesheet",
           href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=diamond,forest,landscape,local_fire_department,water_drop",
+          media: "print",
+          onload: "this.media='all'",
         },
         {
           rel: "icon",

@@ -84,6 +84,19 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.findAllByUserId(userId, page, limit);
   }
 
+  // Đặt TRƯỚC @Get(':id') để không bị route param nuốt. Trả các đơn của chính user
+  // đủ điều kiện đánh giá 1 sản phẩm (thay cho FE kéo 100 đơn rồi lọc client).
+  @Get('eligible-feedback')
+  findFeedbackEligible(
+    @Query('productId') productId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.purchaseOrdersService.findFeedbackEligibleOrders(
+      userId,
+      productId,
+    );
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.purchaseOrdersService.findOne(id, user);
