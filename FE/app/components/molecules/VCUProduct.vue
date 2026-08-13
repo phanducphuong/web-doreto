@@ -859,7 +859,11 @@ const sanitizeComboTiers = () => {
 };
 
 // ==== Cấu hình biến thể theo MÀU × SIZE (SKU tự ghép, ảnh theo màu) ====
-type TColorDef = { name: string; code: string; imageUrl: string; imageFile: File[] };
+// id: định danh ổn định để đổi TÊN màu vẫn cập nhật đúng biến thể (giữ _id + kho),
+// không bị coi là màu mới (tránh xóa biến thể cũ → lỗi FK khi SP đã có đơn).
+type TColorDef = { id: string; name: string; code: string; imageUrl: string; imageFile: File[] };
+let _colorIdCounter = 0;
+const nextColorId = () => `c${++_colorIdCounter}`;
 const DEFAULT_SIZES = ["M", "L", "XL", "2XL", "3XL", "4XL"];
 const COLOR_DIM_RE = /màu|mau sac|color/i;
 
@@ -873,7 +877,13 @@ const existingVariantIds = ref<Map<string, string>>(new Map());
 // Giữ giá biến thể cũ để fallback khi SP không có combo (giá không lấy từ combo được)
 const existingVariantPrice = ref<Map<string, { price: number; originalPrice?: number }>>(new Map());
 
-const createColorDef = (): TColorDef => ({ name: "", code: "", imageUrl: "", imageFile: [] });
+const createColorDef = (): TColorDef => ({
+  id: nextColorId(),
+  name: "",
+  code: "",
+  imageUrl: "",
+  imageFile: [],
+});
 const addColorDef = () => colorDefs.value.push(createColorDef());
 const removeColorDef = (index: number) => colorDefs.value.splice(index, 1);
 
@@ -891,8 +901,8 @@ const openColorImagePicker = async (index: number) => {
   }
 };
 
-// Khóa ổn định cho từng tổ hợp màu×size
-const variantKey = (colorName: string, size: string | null) => `${colorName}|||${size ?? ""}`;
+// Khóa ổn định cho từng tổ hợp màu×size — theo ID màu (đổi tên vẫn giữ khóa)
+const variantKey = (colorId: string, size: string | null) => `${colorId}|||${size ?? ""}`;
 
 // Preview ảnh màu (file mới -> objectURL; đã upload -> url)
 const colorPreviewMap = ref<Map<File, string>>(new Map());
@@ -925,7 +935,7 @@ const variantRows = computed(() => {
     for (const size of sizes) {
       const sku = [productCode.value, size, color.code].filter(Boolean).join("-");
       rows.push({
-        key: variantKey(color.name, size),
+        key: variantKey(color.id, size),
         color: color.name,
         size,
         sku,
@@ -1050,7 +1060,13 @@ const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
     const cname = o.productOptionNames?.[cIdx];
     if (!cname) continue;
     if (!colorMap.has(cname)) {
-      colorMap.set(cname, { name: cname, code: "", imageUrl: o.imageUrl || "", imageFile: [] });
+      colorMap.set(cname, {
+        id: nextColorId(),
+        name: cname,
+        code: "",
+        imageUrl: o.imageUrl || "",
+        imageFile: [],
+      });
     } else if (!colorMap.get(cname)!.imageUrl && o.imageUrl) {
       colorMap.get(cname)!.imageUrl = o.imageUrl;
     }
@@ -1077,8 +1093,10 @@ const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
   for (const o of ovs) {
     const cname = o.productOptionNames?.[cIdx];
     if (!cname) continue;
+    const colorId = colorMap.get(cname)?.id;
+    if (!colorId) continue;
     const size = sIdx >= 0 ? o.productOptionNames?.[sIdx] ?? null : null;
-    const key = variantKey(cname, size);
+    const key = variantKey(colorId, size);
     stockMap.value[key] = Number(o.stock ?? 0);
     if (o._id) existingVariantIds.value.set(key, o._id);
     existingVariantPrice.value.set(key, {
