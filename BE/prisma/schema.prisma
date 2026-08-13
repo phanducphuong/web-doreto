@@ -265,6 +265,9 @@ model PurchaseItem {
 
   @@index([orderId])
   @@index([productId])
+  // Postgres KHÔNG tự tạo index cho FK phía con → mọi thao tác xóa/sửa option_values
+  // phải seq-scan purchase_items để kiểm ràng buộc. Thêm index (btree, không cần extension).
+  @@index([productOptionValueId])
   @@map("purchase_items")
 }
 

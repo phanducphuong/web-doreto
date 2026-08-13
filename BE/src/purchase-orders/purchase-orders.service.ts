@@ -349,6 +349,26 @@ export class PurchaseOrdersService {
   }
 
   async remove(id: string) {
+    // Chặn xóa CỨNG đơn đã bán (confirmed/shipped/delivered): xóa sẽ cuốn theo
+    // purchase_items (cascade) + viết lại báo cáo ngày = MẤT DẤU KẾ TOÁN không hồi.
+    // Muốn bỏ đơn đã bán thì HỦY (chuyển cancelled) — vẫn giữ bản ghi + trừ đúng "đã bán".
+    const existing = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (existing) {
+      const s = existing.status as unknown as PurchaseOrderStatus;
+      if (
+        s === PurchaseOrderStatus.CONFIRMED ||
+        s === PurchaseOrderStatus.SHIPPED ||
+        s === PurchaseOrderStatus.DELIVERED
+      ) {
+        throw new BadRequestException(
+          'Không thể xóa đơn đã xác nhận/đang giao/đã giao. Hãy hủy đơn (chuyển sang "đã hủy") thay vì xóa để giữ dấu kế toán.',
+        );
+      }
+    }
+
     let order;
     try {
       order = await this.prisma.purchaseOrder.delete({

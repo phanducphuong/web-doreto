@@ -107,8 +107,18 @@ const realImageRef = ref<HTMLImageElement | { $el?: HTMLImageElement } | null>(n
 
 const resolvedAlt = computed(() => props.alt || "image");
 const isEmpty = computed(() => !props.src?.trim());
-const showPlaceholder = computed(() => !isHydrated.value || (isLoading.value && !hasError.value));
-const imageVisibilityClass = computed(() => (showPlaceholder.value ? "opacity-0" : "opacity-100"));
+// Ảnh eager = ảnh above-the-fold (ứng viên LCP, vd ảnh chính trang chi tiết SP):
+// hiện NGAY từ HTML SSR, KHÔNG che placeholder và KHÔNG chờ hydrate. Trước đây mọi
+// ảnh đều opacity-0 tới khi JS hydrate xong → LCP tính theo lúc hydrate (xấu).
+// Ảnh lazy (thẻ SP, gallery…) giữ nguyên hành vi cũ — thay đổi này chỉ chạm ảnh eager.
+const isEager = computed(() => props.loading === "eager");
+const showPlaceholder = computed(() => {
+  if (isEager.value) return false;
+  return !isHydrated.value || (isLoading.value && !hasError.value);
+});
+const imageVisibilityClass = computed(() =>
+  isEager.value || !showPlaceholder.value ? "opacity-100" : "opacity-0",
+);
 
 const getRealImageEl = (): HTMLImageElement | null => {
   const target = realImageRef.value as any;
