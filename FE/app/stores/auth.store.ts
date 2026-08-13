@@ -5,8 +5,8 @@ export const useAuthStore = defineStore("auth", () => {
   const route = useRoute();
   const toast = useToast();
   const user = ref<any>(null);
-  const token = useCookie("access_token");
-  const refreshToken = useCookie("refresh_token");
+  const token = useAccessTokenCookie();
+  const refreshToken = useRefreshTokenCookie();
   const { $authRepository, runWithContext } = useNuxtApp();
   const loadingStates = ref({
     login: false,
@@ -23,16 +23,24 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       loadingStates.value.logout = true;
       await $authRepository.logout();
-
-      if (route.path.startsWith("/admin")) return runWithContext(() => navigateTo("/"));
     } catch (error) {
-      toast.error({ message: "Logout failed" });
-      console.error(error);
+      // Phiên đã hết hạn (401) thì gọi logout tất trả 401 — coi như đã đăng xuất,
+      // KHÔNG bắn toast "Logout failed" (tiếng Anh) đập vào mặt khách. Lỗi khác mới báo.
+      const status = (error as { statusCode?: number; status?: number })?.statusCode
+        ?? (error as { status?: number })?.status;
+      if (status !== 401) {
+        toast.error({ message: "Đăng xuất thất bại" });
+        console.error(error);
+      }
     } finally {
       loadingStates.value.logout = false;
       token.value = null;
       refreshToken.value = null;
       user.value = null;
+      // Đang ở trang quản trị mà mất phiên thì đưa về trang chủ (không để kẹt ở /admin)
+      if (route.path.startsWith("/admin")) {
+        await runWithContext(() => navigateTo("/"));
+      }
     }
   };
 

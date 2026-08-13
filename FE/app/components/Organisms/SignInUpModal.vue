@@ -35,7 +35,7 @@ import MoleculesCommonModal from "~/components/molecules/common/Modal.vue";
 import MoleculesAuthSignInForm from "~/components/molecules/auth/SignInForm.vue";
 import MoleculesAuthSignUpForm from "~/components/molecules/auth/SignUpForm.vue";
 
-const { $listen } = useNuxtApp();
+const { $listen, $off } = useNuxtApp();
 const modalRef = ref<InstanceType<typeof MoleculesCommonModal>>();
 const formType = ref<"sign-in" | "sign-up">("sign-in");
 const formCompRef = ref<
@@ -73,12 +73,15 @@ const currentForm = computed(() => {
   return formType.value === "sign-in" ? MoleculesAuthSignInForm : MoleculesAuthSignUpForm;
 });
 
-onMounted(() => {
-  $listen("auth:open-sign-modal", (data) => {
-    const type = data.type;
-    formType.value = type;
+const onOpenSignModal = (data: { type: "sign-in" | "sign-up" }) => {
+  formType.value = data.type;
+  modalRef.value?.openModal();
+};
 
-    modalRef.value?.openModal();
-  });
+onMounted(() => {
+  $listen("auth:open-sign-modal", onOpenSignModal);
+});
+onUnmounted(() => {
+  $off("auth:open-sign-modal", onOpenSignModal);
 });
 </script>

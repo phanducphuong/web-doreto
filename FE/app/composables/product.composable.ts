@@ -1,5 +1,6 @@
 import type { TExistedProduct, TProductFormError, TProductQueryParams } from "~/types/product.type";
 import type { TTablePagination } from "~/types/table.type";
+import messageService from "~/services/message.service";
 
 export default function useProduct() {
   const toast = useToast();
@@ -42,15 +43,14 @@ export default function useProduct() {
   const deleteProduct = async (productId: string): Promise<boolean> => {
     try {
       loadingStates.value.delete = true;
-      // TODO: Comment tạm thời để test, sẽ mở lại sau khi hoàn thành phần message service
-      // const isConfirm = await messageService.confirm({
-      //   title: "Xóa sản phẩm",
-      //   content: "Bạn có chắc chắn muốn xóa sản phẩm này không?",
-      //   confirmText: "Xóa",
-      //   cancelText: "Hủy",
-      // });
+      const isConfirm = await messageService.confirm({
+        title: "Xóa sản phẩm",
+        content: "Bạn có chắc chắn muốn xóa sản phẩm này không?",
+        confirmText: "Xóa",
+        cancelText: "Hủy",
+      });
 
-      // if (!isConfirm) return false;
+      if (!isConfirm) return false;
       await $productRepository.deleteOne(productId);
       toast.success({ message: "Xóa sản phẩm thành công" });
       return true;

@@ -20,16 +20,22 @@ import type { TExistedProduct } from "~/types/product.type";
 
 const { layoutConfig } = useAppStore();
 const route = useRoute();
-const { $listen } = useNuxtApp();
+const { $listen, $off } = useNuxtApp();
 const quickViewModalRef = ref<{ openModal: (product: TExistedProduct) => void } | null>(null);
 
 const isHaveFilter = computed(() => {
   return ["san-pham", "danh-muc", "tim-kiem"].includes(route.name as string) || false;
 });
 
+const onQuickView = (product: TExistedProduct) => {
+  quickViewModalRef.value?.openModal(product);
+};
+
 onMounted(() => {
-  $listen("product:quick-view", (product: TExistedProduct) => {
-    quickViewModalRef.value?.openModal(product);
-  });
+  $listen("product:quick-view", onQuickView);
+});
+// Hủy đăng ký khi layout unmount (điều hướng web ↔ admin) để handler không nhân bản
+onUnmounted(() => {
+  $off("product:quick-view", onQuickView);
 });
 </script>

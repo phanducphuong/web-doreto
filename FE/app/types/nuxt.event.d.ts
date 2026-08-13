@@ -25,6 +25,11 @@ declare module "#app" {
       event: K,
       handler: (payload: TApplicationEvents[K]) => void,
     ) => void;
+
+    $off: <K extends keyof TApplicationEvents>(
+      event: K,
+      handler: (payload: TApplicationEvents[K]) => void,
+    ) => void;
   }
 }
 

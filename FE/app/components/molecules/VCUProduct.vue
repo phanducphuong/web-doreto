@@ -1611,7 +1611,6 @@ const duplicateOptionValue = (index: number) => {
 
 watchEffect(() => {
   if (defaultData) {
-    console.log(defaultData);
     productForm.value = {
       ...defaultData,
       categoryIds: defaultData?.categoryIds || [],

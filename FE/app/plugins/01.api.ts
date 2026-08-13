@@ -21,7 +21,9 @@ function isAuthPublicOrRefreshUrl(request: unknown): boolean {
 }
 
 export default defineNuxtPlugin((nuxtApp) => {
-  let refreshPromise: Promise<boolean> | null = null;
+  // runRefresh trả về access token MỚI (hoặc null nếu refresh thất bại), không phải boolean —
+  // cần token này để gắn thẳng vào header lần thử lại (xem wrappedFetch).
+  let refreshPromise: Promise<string | null> | null = null;
   const config = useRuntimeConfig();
   const apiBaseUrl = config.public.apiBaseUrl;
 
@@ -33,23 +35,29 @@ export default defineNuxtPlugin((nuxtApp) => {
     baseURL: apiBaseUrl,
 
     onRequest({ options }) {
-      const token = useCookie("access_token");
       const headers = new Headers(options.headers);
 
-      if (token.value) {
-        headers.set("Authorization", `Bearer ${token.value}`);
+      // Nếu caller đã gắn Authorization tường minh (lần thử lại sau refresh) thì GIỮ NGUYÊN.
+      // Trước đây luôn ghi đè bằng token đọc từ cookie; khi SSR, cookie đọc lại là header
+      // của request gốc (token CŨ đã hết hạn) → lần thử lại vẫn 401. Nay chỉ đọc cookie khi
+      // caller chưa tự set token.
+      if (!headers.has("Authorization")) {
+        const token = useAccessTokenCookie();
+        if (token.value) {
+          headers.set("Authorization", `Bearer ${token.value}`);
+        }
       }
 
       options.headers = headers;
     },
   });
 
-  const runRefresh = (): Promise<boolean> =>
+  const runRefresh = (): Promise<string | null> =>
     nuxtApp.runWithContext(async () => {
-      const refreshTokenCookie = useCookie("refresh_token");
-      const accessTokenCookie = useCookie("access_token");
+      const refreshTokenCookie = useRefreshTokenCookie();
+      const accessTokenCookie = useAccessTokenCookie();
 
-      if (!refreshTokenCookie.value) return false;
+      if (!refreshTokenCookie.value) return null;
 
       try {
         const res = await plainFetch<{ accessToken: string; refreshToken: string }>(
@@ -61,13 +69,13 @@ export default defineNuxtPlugin((nuxtApp) => {
         );
         accessTokenCookie.value = res.accessToken;
         refreshTokenCookie.value = res.refreshToken;
-        return true;
+        return res.accessToken;
       } catch {
-        return false;
+        return null;
       }
     });
 
-  const ensureRefreshing = (): Promise<boolean> => {
+  const ensureRefreshing = (): Promise<string | null> => {
     if (!refreshPromise) {
       refreshPromise = runRefresh().finally(() => {
         refreshPromise = null;
@@ -81,7 +89,6 @@ export default defineNuxtPlugin((nuxtApp) => {
     opts?: Parameters<typeof $fetch>[1],
   ) => {
     const resolvedOptions = (opts ?? {}) as TFetchOptionsWithAuthRetry;
-    const isRetry = Boolean(resolvedOptions.authRetry);
 
     try {
       return await baseFetch(request, resolvedOptions);
@@ -89,25 +96,30 @@ export default defineNuxtPlugin((nuxtApp) => {
       const status = getFetchErrorStatus(error);
       if (status !== 401) throw error;
       if (isAuthPublicOrRefreshUrl(request)) throw error;
-
-      if (isRetry) {
+      // Đã là lần thử lại mà vẫn 401 → refresh không cứu được, dọn phiên.
+      if (resolvedOptions.authRetry) {
         nuxtApp.runWithContext(() => {
           useAuthStore().logout();
         });
         throw error;
       }
 
-      const refreshed = await ensureRefreshing();
-      if (!refreshed) {
+      const freshToken = await ensureRefreshing();
+      if (!freshToken) {
         nuxtApp.runWithContext(() => {
           useAuthStore().logout();
         });
         throw error;
       }
 
+      // Gắn token mới THẲNG vào header (không phụ thuộc cookie — quan trọng khi SSR),
+      // và đánh dấu authRetry để nếu vẫn 401 thì không lặp vô hạn.
+      const retryHeaders = new Headers(resolvedOptions.headers as HeadersInit | undefined);
+      retryHeaders.set("Authorization", `Bearer ${freshToken}`);
       return baseFetch(request, {
         ...resolvedOptions,
         authRetry: true,
+        headers: retryHeaders,
       });
     }
   };

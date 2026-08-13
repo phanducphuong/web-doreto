@@ -5,7 +5,7 @@ import { ERole, type TUser } from "~/types/user.type";
 // nên user thường không thấy giao diện quản trị lóe lên nữa.
 export default defineNuxtRouteMiddleware(async () => {
   const authStore = useAuthStore();
-  const token = useCookie("access_token");
+  const token = useAccessTokenCookie();
 
   if (!token.value) return navigateTo("/");
 

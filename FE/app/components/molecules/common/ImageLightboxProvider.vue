@@ -5,12 +5,17 @@
 <script setup lang="ts">
 import type { TImageLightboxPayload } from "~/types/image-lightbox.type";
 
-const { $listen } = useNuxtApp();
+const { $listen, $off } = useNuxtApp();
 const { openImageLightbox } = useImageLightbox();
 
+const onOpen = (payload: TImageLightboxPayload) => {
+  void openImageLightbox(payload);
+};
+
 onMounted(() => {
-  $listen("image-lightbox:open", (payload: TImageLightboxPayload) => {
-    void openImageLightbox(payload);
-  });
+  $listen("image-lightbox:open", onOpen);
+});
+onUnmounted(() => {
+  $off("image-lightbox:open", onOpen);
 });
 </script>
