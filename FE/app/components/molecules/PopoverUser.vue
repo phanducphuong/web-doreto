@@ -180,8 +180,9 @@ function toggleUserDrawer() {
 }
 
 const openAdminDashboard = () => {
+  // Vào quản trị mặc định mở trang Sản phẩm (việc chính là chỉnh sửa sản phẩm)
   navigateTo({
-    name: "admin-dashboard",
+    name: "product-management",
   });
   closeUserDrawer();
 };

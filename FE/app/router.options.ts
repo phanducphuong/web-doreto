@@ -58,6 +58,12 @@ export default <RouterConfig>{
     },
 
     // * ADMIN ROUTES
+    // Vào /admin mặc định chuyển tới trang Sản phẩm (việc chính là chỉnh sửa sản phẩm)
+    {
+      name: "admin-root",
+      path: "/admin",
+      redirect: "/admin/quan-ly-san-pham",
+    },
     {
       name: "admin-dashboard",
       path: "/admin/dashboard",
