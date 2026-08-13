@@ -612,36 +612,17 @@ export class PurchaseOrdersService {
     items: SnapshotItem[],
     stockDirection: 1 | -1,
   ) {
+    // KHO ẢO: đặt/hủy đơn KHÔNG trừ/cộng tồn kho (stock do admin đặt, luôn dư),
+    // cũng không chặn khi "hết hàng". Chỉ cập nhật lượt mua (đã bán) để thống kê.
     for (const item of items) {
-      // Khi trừ kho: điều kiện stock >= count chạy nguyên tử trong DB,
-      // 2 khách checkout cùng lúc món cuối cùng thì chỉ 1 người thành công
-      const optionWhere: Prisma.OptionValueWhereInput =
-        stockDirection === -1
-          ? { id: item.productOptionValueId, stock: { gte: item.count } }
-          : { id: item.productOptionValueId };
-
-      const updated = await tx.optionValue.updateMany({
-        where: optionWhere,
-        data: {
-          stock: { increment: stockDirection * item.count },
-          purchaseCount: { increment: -stockDirection * item.count },
-        },
+      await tx.optionValue.updateMany({
+        where: { id: item.productOptionValueId },
+        data: { purchaseCount: { increment: -stockDirection * item.count } },
       });
 
-      if (stockDirection === -1 && updated.count === 0) {
-        throw new ConflictException(
-          'Sản phẩm không đủ hàng trong kho, vui lòng giảm số lượng hoặc chọn sản phẩm khác',
-        );
-      }
-
-      // stock của Product là số gộp các biến thể — không gắn điều kiện gte
-      // để tránh chặn nhầm khi số gộp lệch tạm thời với tổng biến thể
       await tx.product.updateMany({
         where: { id: item.productId },
-        data: {
-          stock: { increment: stockDirection * item.count },
-          purchaseCount: { increment: -stockDirection * item.count },
-        },
+        data: { purchaseCount: { increment: -stockDirection * item.count } },
       });
     }
   }

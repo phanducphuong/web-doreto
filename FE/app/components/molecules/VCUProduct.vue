@@ -942,6 +942,18 @@ const applyBulkStock = () => {
   });
 };
 
+// Kho ảo: biến thể mới mặc định 100 (admin sửa sau nếu cần)
+const DEFAULT_VARIANT_STOCK = 100;
+watch(
+  variantRows,
+  (rows) => {
+    for (const row of rows) {
+      if (stockMap.value[row.key] === undefined) stockMap.value[row.key] = DEFAULT_VARIANT_STOCK;
+    }
+  },
+  { immediate: true },
+);
+
 // Upload ảnh MÀU (mỗi màu 1 lần) rồi gán url cho color def
 const uploadColorImages = async () => {
   const pending = colorDefs.value.filter((c) => c.imageFile?.length);
