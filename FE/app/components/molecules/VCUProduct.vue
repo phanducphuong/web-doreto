@@ -822,8 +822,8 @@ const createDefaultOptionValue = () => ({
 });
 
 // * COMBO theo tổng số lượng (tầng giá phủ lên biến thể màu/size)
-const createDefaultComboTier = (): TComboTier => ({
-  quantity: 1,
+const createDefaultComboTier = (quantity = 1): TComboTier => ({
+  quantity,
   price: 0,
   originalPrice: undefined,
   freeship: false,
@@ -832,7 +832,9 @@ const createDefaultComboTier = (): TComboTier => ({
 
 const addComboTier = () => {
   productForm.value.comboTiers ||= [];
-  productForm.value.comboTiers.push(createDefaultComboTier());
+  // Số lượng mặc định theo thứ tự (1, 2, 3, 4...) để khỏi quên sửa
+  const nextQty = productForm.value.comboTiers.length + 1;
+  productForm.value.comboTiers.push(createDefaultComboTier(nextQty));
 };
 
 const removeComboTier = (index: number) => {

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-5">
-    <!-- BƯỚC 1: COMBO (tự xác định theo tổng số đã chọn) -->
+    <!-- BƯỚC 1: CHỌN COMBO (bấm để chọn bậc) -->
     <div class="space-y-3">
       <div class="flex items-center gap-2">
         <span class="h-5 w-5 center-child rounded-full bg-primary text-white text-xs font-bold">1</span>
@@ -10,15 +10,17 @@
         </label>
       </div>
       <div class="space-y-2">
-        <div
-          v-for="tier in tiers"
-          :key="tier.quantity"
-          class="flex items-center justify-between gap-3 rounded-xl border p-3 transition-all"
+        <button
+          v-for="(tier, ti) in tiers"
+          :key="ti"
+          type="button"
+          class="w-full flex items-center justify-between gap-3 rounded-xl border p-3 text-left transition-all cursor-pointer"
           :class="
-            tier.quantity === pickedTotal
+            ti === selectedIndex
               ? 'border-primary ring-1 ring-primary bg-primary/5'
-              : 'border-outline-variant bg-white'
+              : 'border-outline-variant bg-white hover:border-primary/50'
           "
+          @click="selectTier(ti)"
         >
           <div>
             <div class="flex items-center gap-2">
@@ -31,15 +33,9 @@
               >
                 Freeship
               </span>
-              <span
-                v-if="tier.quantity === pickedTotal"
-                class="rounded bg-primary/10 px-1.5 py-0.5 text-10px font-semibold text-primary"
-              >
-                Đang chọn
-              </span>
             </div>
             <div class="text-xs text-on-surface-variant">
-              {{ formatPrice(Math.round(tier.price / tier.quantity)) }}/sản phẩm
+              {{ formatPrice(Math.round(tier.price / Math.max(1, tier.quantity))) }}/sản phẩm
             </div>
           </div>
           <div class="text-right">
@@ -51,7 +47,7 @@
               {{ formatPrice(tier.originalPrice) }}
             </div>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -60,8 +56,11 @@
       <div class="flex items-center gap-2">
         <span class="h-5 w-5 center-child rounded-full bg-primary text-white text-xs font-bold">2</span>
         <label class="text-base font-bold text-on-surface sm:text-lg">Chọn màu</label>
-        <span class="ml-auto text-sm font-semibold" :class="activeTier ? 'text-success' : 'text-on-surface-variant'">
-          Đã chọn {{ pickedTotal }}
+        <span
+          class="ml-auto text-sm font-semibold"
+          :class="pickedTotal === needQty ? 'text-success' : 'text-on-surface-variant'"
+        >
+          Đã chọn {{ pickedTotal }}/{{ needQty }}
         </span>
       </div>
 
@@ -76,7 +75,6 @@
               : 'border-outline-variant bg-white'
           "
         >
-          <!-- Bấm vào ô màu (ảnh + tên) là số lượng tự lên 1 -->
           <button
             type="button"
             class="flex flex-1 items-center gap-3 text-left cursor-pointer disabled:cursor-not-allowed"
@@ -125,12 +123,8 @@
         </div>
       </div>
 
-      <p v-if="!activeTier" class="text-xs text-on-surface-variant">
-        {{
-          pickedTotal === 0
-            ? "Bấm vào màu để chọn (mỗi màu 1 cái) hoặc dùng nút +/−."
-            : `Chọn đủ ${tierQtysLabel} sản phẩm để thành combo (đang chọn ${pickedTotal}).`
-        }}
+      <p v-if="pickedTotal < needQty" class="text-xs text-on-surface-variant">
+        Bấm vào màu để chọn (mỗi màu 1 cái) — cần thêm {{ needQty - pickedTotal }} sản phẩm.
       </p>
     </div>
 
@@ -165,9 +159,9 @@
         <span class="text-sm text-on-surface-variant">Tổng cộng</span>
         <div class="text-right">
           <span class="text-2xl font-bold text-primary sm:text-3xl">
-            {{ formatPrice(activeTier?.price || 0) }}
+            {{ formatPrice(selectedTier?.price || 0) }}
           </span>
-          <span v-if="activeTier?.freeship" class="ml-2 text-xs font-semibold text-success">Freeship</span>
+          <span v-if="selectedTier?.freeship" class="ml-2 text-xs font-semibold text-success">Freeship</span>
         </div>
       </div>
 
@@ -211,10 +205,7 @@ const COLOR_RE = /màu|mau sac|color/i;
 const tiers = computed<TComboTier[]>(() =>
   [...(props.product.comboTiers || [])].sort((a, b) => a.quantity - b.quantity),
 );
-const tierQtysLabel = computed(() => tiers.value.map((t) => t.quantity).join(", "));
-const maxComboQty = computed(() => tiers.value.reduce((m, t) => Math.max(m, t.quantity), 0));
 
-// Chiều màu / size trong productOptions
 const colorDimIndex = computed(() =>
   (props.product.productOptions || []).findIndex((name) => COLOR_RE.test(name)),
 );
@@ -229,7 +220,6 @@ const inStockOptions = computed(() =>
   (props.product.optionValues || []).filter((o) => (o.stock ?? 0) > 0),
 );
 
-// Danh sách màu (kèm ảnh); không có chiều màu -> 1 mục "Sản phẩm"
 const colors = computed<{ name: string | null; imageUrl?: string }[]>(() => {
   if (!hasColorDim.value) return [{ name: null, imageUrl: props.product.thumbnailUrls?.[0] }];
   const names = Array.from(
@@ -258,13 +248,23 @@ const sizes = computed<string[]>(() => {
   );
 });
 
-// Số lượng theo màu (key = tên màu; không có màu -> key "")
+// Combo đang chọn (bấm để chọn); mặc định bậc đầu tiên
+const selectedIndex = ref(0);
+const selectedTier = computed<TComboTier | null>(() => tiers.value[selectedIndex.value] ?? null);
+const needQty = computed(() => Math.max(1, selectedTier.value?.quantity ?? 1));
+
 const colorQty = ref<Record<string, number>>({});
 const selectedSize = ref<string | null>(null);
 const validateMsg = ref("");
 const loadingStates = computed(
   () => usePurchaseOrderStore().loadingStates.value ?? { addToCart: false },
 );
+
+const selectTier = (index: number) => {
+  selectedIndex.value = index;
+  colorQty.value = {}; // đổi combo -> chọn lại màu cho đúng số lượng
+  validateMsg.value = "";
+};
 
 const findVariant = (color: string | null, size: string | null): TOptionValue | undefined =>
   inStockOptions.value.find(
@@ -286,16 +286,12 @@ const pickedTotal = computed(() =>
   Object.values(colorQty.value).reduce((sum, n) => sum + (n || 0), 0),
 );
 
-// Combo áp dụng = bậc khớp tổng số đã chọn
-const activeTier = computed(() => tiers.value.find((t) => t.quantity === pickedTotal.value) || null);
-
-// Còn tăng được không: chưa vượt combo lớn nhất + còn tồn kho
 const canInc = (color: string | null): boolean => {
-  if (pickedTotal.value >= maxComboQty.value) return false;
+  if (pickedTotal.value >= needQty.value) return false;
   return (colorQty.value[color || ""] || 0) < colorMax(color);
 };
 
-// Bấm vào ô màu: 0 -> 1, đang >0 -> 0 (bỏ chọn)
+// Bấm ô màu: 0 -> 1; đang >0 -> 0 (bỏ chọn)
 const toggleColor = (color: string | null) => {
   const key = color || "";
   if ((colorQty.value[key] || 0) > 0) colorQty.value[key] = 0;
@@ -316,7 +312,6 @@ const decColor = (color: string | null) => {
   colorQty.value[key] = colorQty.value[key] - 1;
 };
 
-// Đổi size -> kẹp lại số lượng theo tồn kho size mới
 watch(selectedSize, () => {
   for (const key of Object.keys(colorQty.value)) {
     const max = colorMax(key || null);
@@ -329,7 +324,6 @@ const isSizeDisabled = (size: string) =>
     (o) => sizeDimIndex.value < 0 || o.productOptionNames?.[sizeDimIndex.value] === size,
   );
 
-// Mở rộng lựa chọn thành danh sách biến thể cho từng sản phẩm
 const unitOptionValues = computed<(TOptionValue | undefined)[]>(() => {
   const units: (TOptionValue | undefined)[] = [];
   for (const [color, qty] of Object.entries(colorQty.value)) {
@@ -340,15 +334,16 @@ const unitOptionValues = computed<(TOptionValue | undefined)[]>(() => {
 });
 
 const isComplete = computed(() => {
-  if (!activeTier.value) return false;
+  if (!selectedTier.value) return false;
+  if (pickedTotal.value !== needQty.value) return false;
   if (hasSizeDim.value && !selectedSize.value) return false;
-  return unitOptionValues.value.length > 0 && unitOptionValues.value.every((o) => !!o);
+  return unitOptionValues.value.length === needQty.value && unitOptionValues.value.every((o) => !!o);
 });
 
 const buildValidateMsg = () => {
-  if (pickedTotal.value === 0) return "Vui lòng chọn màu (số lượng).";
-  if (!activeTier.value)
-    return `Cần chọn đủ ${tierQtysLabel.value} sản phẩm để thành combo (đang chọn ${pickedTotal.value}).`;
+  if (!selectedTier.value) return "Vui lòng chọn combo.";
+  if (pickedTotal.value !== needQty.value)
+    return `Vui lòng chọn đủ ${needQty.value} sản phẩm (đang chọn ${pickedTotal.value}).`;
   if (hasSizeDim.value && !selectedSize.value) return "Vui lòng chọn size.";
   if (unitOptionValues.value.some((o) => !o))
     return "Lựa chọn hiện đã hết hàng, vui lòng đổi màu/size.";
@@ -357,16 +352,16 @@ const buildValidateMsg = () => {
 
 const commitCombo = async (): Promise<boolean> => {
   validateMsg.value = buildValidateMsg();
-  if (!isComplete.value || !activeTier.value) return false;
+  if (!isComplete.value || !selectedTier.value) return false;
 
   const units = unitOptionValues.value.filter(Boolean) as TOptionValue[];
   const res = await addComboToCart(
     props.product,
     {
-      quantity: activeTier.value.quantity,
-      price: activeTier.value.price,
-      label: activeTier.value.label,
-      freeship: activeTier.value.freeship,
+      quantity: needQty.value,
+      price: selectedTier.value.price,
+      label: selectedTier.value.label,
+      freeship: selectedTier.value.freeship,
     },
     units,
   );
