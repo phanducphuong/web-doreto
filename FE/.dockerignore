@@ -1,0 +1,13 @@
+# Không copy vào image khi build (bảo mật + tránh đè node_modules native của host lên container Linux)
+node_modules
+.nuxt
+.output
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+coverage
+*.log
+.DS_Store

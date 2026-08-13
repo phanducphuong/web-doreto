@@ -9,7 +9,7 @@
 | Database | `doreto_web` trong `crm-pl-prod`, user `doreto_app` (9 bảng đã migrate) |
 | Image repo | `doreto-docker` (Artifact Registry) |
 | Service account | `doreto-run@…` (role cloudsql.client) |
-| Admin | `admin@doreto.com` / `admin123` (ĐỔI NGAY) |
+| Admin | `admin@doreto.com` — mật khẩu đặt qua env `SEED_ADMIN_PASSWORD` khi seed (không còn mật khẩu mặc định trong repo) |
 
 **Script tự động** (trong `scripts/`): `deploy-doreto-infra.sh` (tạo nền), `deploy-be.sh`, `deploy-all.sh`, `deploy-resume.sh` (deploy), `seed-prod.sh` (seed admin), `redeploy-be-r2.sh` (thêm R2). Secret production lưu ở file `doreto-secrets.env` (KHÔNG commit).
 
@@ -183,4 +183,4 @@ pnpm --dir BE dev             # backend cổng 8082
 pnpm --dir FE install && cp FE/.env.example FE/.env   # NUXT_PUBLIC_API_BASE_URL=http://localhost:8082
 pnpm --dir FE dev             # frontend
 ```
-Admin mặc định sau seed: **admin@doreto.com / admin123**
+Admin sau seed: **admin@doreto.com**. Mật khẩu local mặc định là `admin123` (chỉ khi KHÔNG đặt env); production bắt buộc đặt `SEED_ADMIN_PASSWORD` (seed sẽ dừng nếu thiếu).

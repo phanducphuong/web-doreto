@@ -30,7 +30,9 @@ gcloud run deploy doreto-be \
   --service-account "$SA" \
   --allow-unauthenticated \
   --add-cloudsql-instances "$CONN" \
-  --set-env-vars "DATABASE_URL=$DATABASE_URL,JWT_SECRET=$JWT_SECRET,JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET,JWT_EXPIRES=1h,JWT_REFRESH_EXPIRES=7d" \
+  `# --update-env-vars: CỘNG DỒN, giữ nguyên các biến R2_*/CRM_*/ANALYTICS_* đã set ở script khác.` \
+  `# (Trước đây --set-env-vars XÓA SẠCH env cũ mỗi lần deploy → mất R2/CRM, upload ảnh chết im lặng.)` \
+  --update-env-vars "DATABASE_URL=$DATABASE_URL,JWT_SECRET=$JWT_SECRET,JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET,JWT_EXPIRES=1h,JWT_REFRESH_EXPIRES=7d" \
   --labels app=doreto || { echo "❌ DEPLOY BE THẤT BẠI (có thể migrate lỗi quyền — xem log Cloud Run)"; exit 1; }
 
 BE_URL=$(gcloud run services describe doreto-be --region "$REGION" --format="value(status.url)")

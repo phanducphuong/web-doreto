@@ -30,7 +30,7 @@ pnpm seed
 pnpm dev
 ```
 
-Tài khoản admin mặc định sau khi seed: **admin@doreto.com** / **admin123**
+Tài khoản admin sau khi seed: **admin@doreto.com**. Mật khẩu ở local mặc định `admin123` (chỉ khi không đặt env `SEED_ADMIN_PASSWORD`); production phải đặt `SEED_ADMIN_PASSWORD`.
 
 ## Các lệnh Prisma hữu ích
 - `pnpm prisma:studio` — mở giao diện xem/sửa dữ liệu trực quan

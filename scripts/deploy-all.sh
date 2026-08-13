@@ -28,7 +28,8 @@ echo "############ 2/4 DEPLOY BACKEND ############"
 gcloud run deploy doreto-be \
   --image "$IMAGE_BE" --region "$REGION" --service-account "$SA" \
   --allow-unauthenticated --add-cloudsql-instances "$CONN" \
-  --set-env-vars "DATABASE_URL=$DATABASE_URL,JWT_SECRET=$JWT_SECRET,JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET,JWT_EXPIRES=1h,JWT_REFRESH_EXPIRES=7d" \
+  `# --update-env-vars giữ nguyên R2_*/CRM_*/ANALYTICS_* (đừng đổi lại thành --set-env-vars: sẽ xóa sạch).` \
+  --update-env-vars "DATABASE_URL=$DATABASE_URL,JWT_SECRET=$JWT_SECRET,JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET,JWT_EXPIRES=1h,JWT_REFRESH_EXPIRES=7d" \
   --labels app=doreto || { echo "❌ DEPLOY BE THẤT BẠI (xem log Cloud Run — có thể migrate lỗi quyền DB)"; exit 1; }
 
 BE_URL=$(gcloud run services describe doreto-be --region "$REGION" --format="value(status.url)")

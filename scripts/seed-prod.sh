@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Seed tài khoản admin vào DB production doreto_web (qua Cloud SQL Auth Proxy).
-# Chỉ tạo admin@doreto.com / admin123 — KHÔNG kéo dữ liệu decor.
+# Mật khẩu admin phải đặt qua env SEED_ADMIN_PASSWORD (KHÔNG hardcode) — seed.ts sẽ
+# dừng nếu chạy production mà thiếu biến này. KHÔNG kéo dữ liệu decor.
 set -uo pipefail
 export CLOUDSDK_PYTHON="$HOME/.local/python-gcloud/bin/python3.12"
 export PATH="$HOME/.local/google-cloud-sdk/bin:$PATH"
@@ -29,7 +30,10 @@ done
 
 echo "== Chạy seed admin =="
 cd "$ROOT" || exit 1
+: "${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD rỗng — đặt mật khẩu admin production trước khi seed (không dùng mật khẩu mặc định)}"
+NODE_ENV=production \
 DATABASE_URL="postgresql://doreto_app:${DB_PW}@localhost:${PROXY_PORT}/doreto_web?schema=public" \
+SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
   pnpm --dir BE seed
 
 echo "== XONG seed (proxy sẽ tự tắt) =="
