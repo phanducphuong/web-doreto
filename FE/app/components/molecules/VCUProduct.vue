@@ -870,6 +870,8 @@ const stockMap = ref<Record<string, number | string>>({});
 const bulkStock = ref<number | string>("");
 // Giữ _id biến thể cũ theo tổ hợp màu|size để cập nhật không xóa nhầm (tránh lỗi FK đơn hàng)
 const existingVariantIds = ref<Map<string, string>>(new Map());
+// Giữ giá biến thể cũ để fallback khi SP không có combo (giá không lấy từ combo được)
+const existingVariantPrice = ref<Map<string, { price: number; originalPrice?: number }>>(new Map());
 
 const createColorDef = (): TColorDef => ({ name: "", code: "", imageUrl: "", imageFile: [] });
 const addColorDef = () => colorDefs.value.push(createColorDef());
@@ -983,13 +985,17 @@ const deriveBasePrice = (): { price: number; originalPrice?: number } => {
   return { price, originalPrice: original };
 };
 
-// Dựng optionValues từ định nghĩa màu/size + kho + giá suy ra từ combo
+// Dựng optionValues từ định nghĩa màu/size + kho + giá.
+// Giá lấy theo combo "1 quần"; nếu SP không có combo thì giữ giá biến thể cũ.
 const buildOptionValuesFromDefs = () => {
-  const { price, originalPrice } = deriveBasePrice();
+  const { price: comboPrice, originalPrice: comboOriginal } = deriveBasePrice();
   const hasSize = sizeDefs.value.length > 0;
   productForm.value.productOptions = hasSize ? ["Màu sắc", "Kích cỡ"] : ["Màu sắc"];
   productForm.value.optionValues = variantRows.value.map((row) => {
     const id = existingVariantIds.value.get(row.key);
+    const prev = existingVariantPrice.value.get(row.key);
+    const price = comboPrice > 0 ? comboPrice : (prev?.price ?? 0);
+    const originalPrice = comboPrice > 0 ? comboOriginal : prev?.originalPrice;
     return {
       ...(id ? { _id: id } : {}),
       code: row.sku || undefined,
@@ -1007,8 +1013,15 @@ const validateVariantDefs = (): string | null => {
   if (!colorDefs.value.length) return "Cần ít nhất 1 màu.";
   if (colorDefs.value.some((c) => !c.name?.trim())) return "Mỗi màu cần có tên.";
   if (!variantRows.value.length) return "Cần ít nhất 1 màu và 1 size.";
-  const { price } = deriveBasePrice();
-  if (price <= 0) return "Giá lấy theo combo — hãy thêm bậc combo (VD “1 quần”) có giá > 0.";
+  // Giá lấy từ combo; nếu SP không có combo thì giữ giá biến thể cũ. Chỉ chặn khi
+  // biến thể MỚI không có cả giá combo lẫn giá cũ.
+  const { price: comboPrice } = deriveBasePrice();
+  if (comboPrice <= 0) {
+    const missing = variantRows.value.some(
+      (row) => (existingVariantPrice.value.get(row.key)?.price ?? 0) <= 0,
+    );
+    if (missing) return "Thêm bậc combo (VD “1 quần”) có giá, hoặc SP phải có giá sẵn.";
+  }
   return null;
 };
 
@@ -1019,6 +1032,7 @@ const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
   sizeDefs.value = [...DEFAULT_SIZES];
   stockMap.value = {};
   existingVariantIds.value = new Map();
+  existingVariantPrice.value = new Map();
   if (!data?.productOptions?.length) return;
 
   const colorIdx = data.productOptions.findIndex((n) => COLOR_DIM_RE.test(n));
@@ -1067,6 +1081,10 @@ const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
     const key = variantKey(cname, size);
     stockMap.value[key] = Number(o.stock ?? 0);
     if (o._id) existingVariantIds.value.set(key, o._id);
+    existingVariantPrice.value.set(key, {
+      price: Number(o.price ?? 0),
+      originalPrice: o.originalPrice != null ? Number(o.originalPrice) : undefined,
+    });
   }
 };
 
