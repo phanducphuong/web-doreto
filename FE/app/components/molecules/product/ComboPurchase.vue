@@ -153,7 +153,7 @@
       </div>
     </div>
 
-    <!-- TỔNG KẾT + CTA — ghim ở đáy popup, 2 nút cùng 1 hàng -->
+    <!-- TỔNG KẾT + CTA — ghim ở đáy popup -->
     <div
       class="sticky bottom-0 z-10 -mx-3 mt-1 space-y-2 border-t border-outline-variant/40 bg-white px-3 py-3 shadow-[0_-4px_14px_rgba(0,0,0,0.07)] lg:(-mx-4 px-4)"
     >
@@ -167,38 +167,25 @@
 
       <p v-if="validateMsg" class="text-xs text-danger">{{ validateMsg }}</p>
 
-      <div class="flex items-stretch gap-2 font-bold">
-        <AtomsButton
-          type="secondary"
-          class="!px-4 shrink-0 disabled:(opacity-50 cursor-not-allowed)"
-          aria-label="Thêm vào giỏ"
-          :is-loading="loadingStates.addToCart"
-          @click="handleAddToCart"
-        >
-          <ShoppingBag class="size-5" />
-        </AtomsButton>
-        <AtomsButton
-          type="primaryGradient"
-          class="flex-1 h-unset !py-4 text-base disabled:(opacity-50 cursor-not-allowed)"
-          @click="handleBuyNow"
-        >
-          Mua ngay
-        </AtomsButton>
-      </div>
+      <AtomsButton
+        type="primaryGradient"
+        class="w-full h-unset !py-4 text-base font-bold disabled:(opacity-50 cursor-not-allowed)"
+        @click="handleBuyNow"
+      >
+        Mua ngay
+      </AtomsButton>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ShoppingBag } from "lucide-vue-next";
 import type { TExistedProduct, TOptionValue, TComboTier } from "~/types/product.type";
 import { usePurchaseOrderStore } from "~/stores/purchase-order.store";
 import { formatPrice } from "~/utils/data.utils";
 
 const props = defineProps<{ product: TExistedProduct }>();
-const emit = defineEmits<{ (e: "added-to-cart"): void; (e: "buy-now"): void }>();
+const emit = defineEmits<{ (e: "buy-now"): void }>();
 
-const toast = useToast();
 const { addComboToCart, setCartDrawerInitialTab, setCartDrawerOpen } = usePurchaseOrderStore();
 
 const COLOR_RE = /màu|mau sac|color/i;
@@ -257,9 +244,6 @@ const needQty = computed(() => Math.max(1, selectedTier.value?.quantity ?? 1));
 const colorQty = ref<Record<string, number>>({});
 const selectedSize = ref<string | null>(null);
 const validateMsg = ref("");
-const loadingStates = computed(
-  () => usePurchaseOrderStore().loadingStates.value ?? { addToCart: false },
-);
 
 const selectTier = (index: number) => {
   selectedIndex.value = index;
@@ -364,13 +348,6 @@ const getComboSelection = () => {
     },
     units: unitOptionValues.value.filter(Boolean) as TOptionValue[],
   };
-};
-
-const handleAddToCart = async () => {
-  const sel = getComboSelection();
-  if (!sel) return;
-  const res = await addComboToCart(props.product, sel.tier, sel.units);
-  if (res || res === undefined) toast.success({ message: "Đã thêm combo vào giỏ hàng" });
 };
 
 const handleBuyNow = async () => {
