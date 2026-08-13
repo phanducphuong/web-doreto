@@ -153,33 +153,33 @@
       </div>
     </div>
 
-    <!-- TỔNG KẾT + CTA -->
-    <div class="space-y-3 rounded-xl bg-surface-container-low p-3 lg:p-4">
+    <!-- TỔNG KẾT + CTA — ghim ở đáy popup, 2 nút cùng 1 hàng -->
+    <div
+      class="sticky bottom-0 z-10 -mx-3 mt-1 space-y-2 border-t border-outline-variant/40 bg-white px-3 py-3 shadow-[0_-4px_14px_rgba(0,0,0,0.07)] lg:(-mx-4 px-4)"
+    >
       <div class="flex items-center justify-between">
         <span class="text-sm text-on-surface-variant">Tổng cộng</span>
-        <div class="text-right">
-          <span class="text-2xl font-bold text-primary sm:text-3xl">
-            {{ formatPrice(selectedTier?.price || 0) }}
-          </span>
-          <span v-if="selectedTier?.freeship" class="ml-2 text-xs font-semibold text-success">Freeship</span>
+        <div class="text-right leading-tight">
+          <span class="text-2xl font-bold text-primary">{{ formatPrice(selectedTier?.price || 0) }}</span>
+          <span v-if="selectedTier?.freeship" class="ml-1 text-xs font-semibold text-success">Freeship</span>
         </div>
       </div>
 
-      <p v-if="validateMsg" class="text-sm text-danger">{{ validateMsg }}</p>
+      <p v-if="validateMsg" class="text-xs text-danger">{{ validateMsg }}</p>
 
-      <div class="grid grid-cols-1 gap-3 font-bold sm:grid-cols-2">
+      <div class="flex items-stretch gap-2 font-bold">
         <AtomsButton
           type="secondary"
-          class="h-unset !py-4 lg:!py-3.5 disabled:(opacity-50 cursor-not-allowed)"
+          class="!px-4 shrink-0 disabled:(opacity-50 cursor-not-allowed)"
+          aria-label="Thêm vào giỏ"
           :is-loading="loadingStates.addToCart"
           @click="handleAddToCart"
         >
           <ShoppingBag class="size-5" />
-          Thêm vào giỏ
         </AtomsButton>
         <AtomsButton
           type="primaryGradient"
-          class="h-unset !py-4 lg:!py-3.5 disabled:(opacity-50 cursor-not-allowed)"
+          class="flex-1 h-unset !py-4 text-base disabled:(opacity-50 cursor-not-allowed)"
           @click="handleBuyNow"
         >
           Mua ngay
