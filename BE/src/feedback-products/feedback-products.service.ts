@@ -29,6 +29,22 @@ const FEEDBACK_INCLUDE = {
   product: { select: { id: true, name: true } },
 };
 
+// Shape cho route CÔNG KHAI (findAll, findByProductId): KHÔNG lộ email người mua
+// và không lộ mã đơn/ngày mua. Chỉ giữ tên (FE mask lại) + các dòng hàng để hiển
+// thị "đã mua biến thể nào". USER_SELECT/ORDER_SELECT đầy đủ chỉ dùng cho route admin.
+const PUBLIC_USER_SELECT = { id: true, name: true };
+const PUBLIC_ORDER_SELECT = {
+  id: true,
+  purchaseItems: true,
+};
+
+const PUBLIC_FEEDBACK_INCLUDE = {
+  user: { select: PUBLIC_USER_SELECT },
+  order: { select: PUBLIC_ORDER_SELECT },
+  replier: { select: PUBLIC_USER_SELECT },
+  product: { select: { id: true, name: true } },
+};
+
 /** Feedback thuộc về sản phẩm: gắn trực tiếp (admin tạo) hoặc qua đơn hàng chứa sản phẩm. */
 const belongsToProduct = (
   productId: string,
@@ -116,7 +132,7 @@ export class FeedbackProductsService {
   async findAll() {
     const rows = await this.prisma.feedbackProduct.findMany({
       where: { isActive: true },
-      include: FEEDBACK_INCLUDE,
+      include: PUBLIC_FEEDBACK_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((r) => this.populatedShape(r));
@@ -187,7 +203,7 @@ export class FeedbackProductsService {
         isActive: true,
         ...belongsToProduct(productId),
       },
-      include: FEEDBACK_INCLUDE,
+      include: PUBLIC_FEEDBACK_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
     return rows.map((r) => this.populatedShape(r));

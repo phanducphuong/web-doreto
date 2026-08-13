@@ -46,7 +46,10 @@ export class UploadsService {
       'image/svg+xml': 'svg',
       'application/pdf': 'pdf',
     };
-    return map[mimetype] || fallback;
+    if (map[mimetype]) return map[mimetype];
+    // Làm sạch đuôi lấy từ tên file client (chống "/" và ".." lọt vào object key R2)
+    const safe = fallback.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return safe.slice(0, 5) || 'bin';
   }
 
   private async putObject(

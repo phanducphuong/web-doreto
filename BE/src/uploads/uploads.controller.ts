@@ -20,6 +20,27 @@ import { Role } from 'src/common/enums/role.enum';
 const UPLOAD_MAX_FILES = 20;
 const UPLOAD_MAX_FILE_BYTES = 25 * 1024 * 1024;
 
+/**
+ * CHỈ nhận ảnh. Trước đây chấp nhận mọi mimetype → user thường upload file HTML
+ * (Content-Type: text/html) lên R2 rồi mở trên domain CDN = stored XSS. Whitelist
+ * theo mimetype do multer suy ra; ContentType thật khi ghi R2 cũng do server tự map,
+ * không lấy từ client.
+ */
+const ALLOWED_IMAGE_MIMES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+const imageOnlyFilter = (
+  _req: unknown,
+  file: { mimetype: string },
+  cb: (err: Error | null, accept: boolean) => void,
+) => {
+  if (ALLOWED_IMAGE_MIMES.has(file.mimetype)) return cb(null, true);
+  cb(new BadRequestException('Chỉ chấp nhận ảnh (jpg, png, webp, gif)'), false);
+};
+
 // Ảnh: cần đăng nhập (khách viết đánh giá có ảnh + admin);
 // video mô tả sản phẩm: chỉ admin dùng
 @UseGuards(JwtAuthGuard)
@@ -34,6 +55,7 @@ export class UploadsController {
   @UseInterceptors(
     FilesInterceptor('files', UPLOAD_MAX_FILES, {
       limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+      fileFilter: imageOnlyFilter,
     }),
   )
   async uploadFile(@UploadedFiles() files: File[]) {
@@ -64,6 +86,7 @@ export class UploadsController {
   @UseInterceptors(
     FilesInterceptor('files', UPLOAD_MAX_FILES, {
       limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+      fileFilter: imageOnlyFilter,
     }),
   )
   async uploadFilesWithCompression(

@@ -30,8 +30,8 @@ export class AuthController {
     return this.authService.getProfile(userId);
   }
 
-  // 👉 cần JWT guard để lấy user
   @Post('logout')
+  @UseGuards(JwtAuthGuard) // 👉 cần JWT guard để lấy user, nếu không userId=null → xóa refresh token thất bại
   logout(@CurrentUser('userId') userId: string) {
     return this.authService.logout(userId);
   }

@@ -1,4 +1,4 @@
-import { IsOptional, IsNumber, IsString } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FilterProductDto {
@@ -25,11 +25,11 @@ export class FilterProductDto {
   tagId?: string;
 
   @IsOptional()
-  @IsString()
-  sortBy?: 'price' | 'updatedAt' | 'purchaseCount';
+  @IsIn(['price', 'updatedAt', 'createdAt', 'purchaseCount'])
+  sortBy?: 'price' | 'updatedAt' | 'createdAt' | 'purchaseCount';
 
   @IsOptional()
-  @IsString()
+  @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';
 
   @IsOptional()

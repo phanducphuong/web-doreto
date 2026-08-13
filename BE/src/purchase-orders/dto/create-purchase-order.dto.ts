@@ -1,6 +1,8 @@
 import {
   IsString,
   IsArray,
+  ArrayNotEmpty,
+  ArrayMaxSize,
   ValidateNested,
   IsOptional,
   IsUUID,
@@ -29,6 +31,8 @@ export class CreatePurchaseOrderDto {
   userId?: string;
 
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => PurchaseItemDto)
   purchaseItems: PurchaseItemDto[];

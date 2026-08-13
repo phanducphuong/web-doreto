@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class AdminQueryUsersDto {
   @IsOptional()
@@ -7,11 +7,11 @@ export class AdminQueryUsersDto {
   keyword?: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(['createdAt', 'updatedAt', 'name', 'email'])
   sortBy?: 'createdAt' | 'updatedAt' | 'name' | 'email';
 
   @IsOptional()
-  @IsString()
+  @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';
 
   @IsOptional()

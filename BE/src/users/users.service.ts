@@ -81,6 +81,11 @@ export class UsersService {
       page = 1,
       limit = 10,
     } = queryDto;
+    // Whitelist cột sắp xếp — chốt lại lần nữa dù DTO đã @IsIn (tránh orderBy field lạ)
+    const ALLOWED_SORT = ['createdAt', 'updatedAt', 'name', 'email'] as const;
+    const sortField = ALLOWED_SORT.includes(sortBy as never)
+      ? sortBy
+      : 'createdAt';
 
     const where: Prisma.UserWhereInput = {};
     if (keyword?.trim()) {
@@ -99,7 +104,7 @@ export class UsersService {
         where,
         include: USER_INCLUDE,
         omit: { password: true, refreshToken: true },
-        orderBy: { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' },
+        orderBy: { [sortField]: sortOrder === 'asc' ? 'asc' : 'desc' },
         skip,
         take: limit,
       }),

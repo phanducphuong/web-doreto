@@ -43,8 +43,8 @@ export class PurchaseOrdersController {
   @Roles(Role.ADMIN)
   @Get()
   findAll(
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 10,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query('userId') userId?: string,
     @Query('state') status?: PurchaseOrderStatus,
     @Query('fromDate') fromDate?: string,

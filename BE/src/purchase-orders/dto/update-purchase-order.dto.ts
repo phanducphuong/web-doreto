@@ -2,6 +2,7 @@ import {
   IsOptional,
   IsString,
   IsArray,
+  ArrayMaxSize,
   ValidateNested,
   IsUUID,
   MaxLength,
@@ -25,6 +26,7 @@ function trimEmptyToUndefined({
 export class UpdatePurchaseOrderDto {
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => PurchaseItemDto)
   purchaseItems?: PurchaseItemDto[];

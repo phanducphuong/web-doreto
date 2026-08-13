@@ -341,13 +341,27 @@ export class ProductsService {
     return { data, total: data.length, page: 1, count: limit };
   }
 
+  // Chỉ cho phép sắp xếp theo các cột an toàn (whitelist) — chặn orderBy field tùy ý
+  // từ query (?sortBy=__proto__…) gây 500/lộ tên cột. DTO đã @IsIn nhưng chốt lại ở đây.
+  private static readonly SORT_FIELD_MAP: Record<
+    string,
+    keyof Prisma.ProductOrderByWithRelationInput
+  > = {
+    price: 'minPrice',
+    updatedAt: 'updatedAt',
+    createdAt: 'createdAt',
+    purchaseCount: 'purchaseCount',
+  };
+
   private buildOrderBy(
     sortBy?: string,
     sortOrder?: 'asc' | 'desc',
   ): Prisma.ProductOrderByWithRelationInput {
     const dir: 'asc' | 'desc' = sortOrder === 'asc' ? 'asc' : 'desc';
-    if (!sortBy) return { createdAt: 'desc' };
-    const field = sortBy === 'price' ? 'minPrice' : sortBy;
+    const field = sortBy
+      ? ProductsService.SORT_FIELD_MAP[sortBy]
+      : undefined;
+    if (!field) return { createdAt: 'desc' };
     return { [field]: dir };
   }
 
