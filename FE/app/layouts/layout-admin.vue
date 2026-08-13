@@ -13,8 +13,12 @@ import { ERole, type TUser } from "~/types/user.type";
 const authStore = useAuthStore();
 const route = useRoute();
 
+// Lớp chặn dự phòng (middleware "admin" đã chặn từ trước khi render).
+// Dùng watchEffect để vẫn đá ra ngoài nếu hồ sơ user tải xong muộn hoặc bị logout.
 const isAdmin = computed(() => (authStore.user as TUser | null)?.role === ERole.ADMIN);
-if (!authStore.loadingStates.authStore && route.path.startsWith("/admin") && !isAdmin.value) {
-  navigateTo("/");
-}
+watchEffect(() => {
+  if (!authStore.loadingStates.authStore && route.path.startsWith("/admin") && !isAdmin.value) {
+    navigateTo("/");
+  }
+});
 </script>

@@ -76,6 +76,8 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const initAuthStore = async () => {
+    // Đã có user (VD middleware admin gọi trước) thì không gọi lại /auth/profile
+    if (user.value) return;
     try {
       loadingStates.value.authStore = true;
       if (token.value) {

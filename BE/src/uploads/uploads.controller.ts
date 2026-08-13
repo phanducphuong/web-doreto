@@ -58,8 +58,14 @@ export class UploadsController {
     };
   }
 
+  // FE hiện không gọi endpoint này; khóa admin để khách thường không upload tự do
+  @Roles(Role.ADMIN)
   @Post('compress')
-  @UseInterceptors(FilesInterceptor('files'))
+  @UseInterceptors(
+    FilesInterceptor('files', UPLOAD_MAX_FILES, {
+      limits: { fileSize: UPLOAD_MAX_FILE_BYTES },
+    }),
+  )
   async uploadFilesWithCompression(
     @UploadedFiles() files: File[],
     @Query('size') size?: string,
