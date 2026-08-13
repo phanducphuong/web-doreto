@@ -26,6 +26,64 @@ export type TCartItem = {
 export const getCartLineUnitPrice = (item: TCartItem): number =>
   item.comboUnitPrice ?? item.optionValue.price ?? 0;
 
+export const getCartItemKey = (item: Pick<TCartItem, "product" | "optionValue" | "comboUid">) =>
+  item.comboUid
+    ? `combo:${item.comboUid}`
+    : `${item.product._id}:${item.optionValue._id || ""}`;
+
+// ==== Nhóm hiển thị ====
+// Dữ liệu giỏ vẫn lưu mỗi sản phẩm combo 1 dòng (để đặt hàng đúng với BE),
+// nhưng khi HIỂN THỊ thì các dòng cùng comboKey gộp thành 1 nhóm duy nhất.
+export type TCartDisplayGroup = {
+  key: string;
+  item: TCartItem; // dòng đại diện (dòng đầu của nhóm)
+  lines: TCartItem[];
+  isCombo: boolean;
+  totalQuantity: number;
+  totalPrice: number;
+};
+
+export const groupCartLines = (items: TCartItem[]): TCartDisplayGroup[] => {
+  const groups: TCartDisplayGroup[] = [];
+  const comboGroups = new Map<string, TCartDisplayGroup>();
+
+  for (const item of items) {
+    const linePrice = getCartLineUnitPrice(item) * item.quantity;
+    if (!item.comboKey) {
+      groups.push({
+        key: getCartItemKey(item),
+        item,
+        lines: [item],
+        isCombo: false,
+        totalQuantity: item.quantity,
+        totalPrice: linePrice,
+      });
+      continue;
+    }
+
+    const existing = comboGroups.get(item.comboKey);
+    if (existing) {
+      existing.lines.push(item);
+      existing.totalQuantity += item.quantity;
+      existing.totalPrice += linePrice;
+      continue;
+    }
+
+    const group: TCartDisplayGroup = {
+      key: `combo-group:${item.comboKey}`,
+      item,
+      lines: [item],
+      isCombo: true,
+      totalQuantity: item.quantity,
+      totalPrice: linePrice,
+    };
+    comboGroups.set(item.comboKey, group);
+    groups.push(group);
+  }
+
+  return groups;
+};
+
 export type TCartDrawerTab = "cart" | "shipping";
 export const usePurchaseOrderStore = defineStore("purchase-order", () => {
   const { isLogin, user } = storeToRefs(useAuthStore());
@@ -53,15 +111,18 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
   // Sản phẩm vừa bấm "Mua ngay" khi giỏ đã có hàng — để đưa lên đầu danh sách + gắn nhãn.
   const lastBuyNowKey = ref<string | null>(null);
 
-  const getCartItemKey = (
-    item: Pick<TCartItem, "product" | "optionValue" | "comboUid">,
-  ) =>
-    item.comboUid
-      ? `combo:${item.comboUid}`
-      : `${item.product._id}:${item.optionValue._id || ""}`;
-
   const isCartItemSelected = (item: TCartItem) =>
     selectedCartKeys.value.includes(getCartItemKey(item));
+
+  // Nhóm combo: chọn/bỏ chọn cả gói (mọi dòng cùng nhóm luôn tick giống nhau)
+  const isCartGroupSelected = (lines: TCartItem[]) => lines.every(isCartItemSelected);
+
+  const toggleCartGroupSelected = (lines: TCartItem[]) => {
+    const select = !isCartGroupSelected(lines);
+    const keys = lines.map(getCartItemKey);
+    selectedCartKeys.value = selectedCartKeys.value.filter((k) => !keys.includes(k));
+    if (select) selectedCartKeys.value.push(...keys);
+  };
 
   const markCartItemSelected = (item: Pick<TCartItem, "product" | "optionValue">) => {
     const key = getCartItemKey(item);
@@ -609,6 +670,8 @@ export const usePurchaseOrderStore = defineStore("purchase-order", () => {
     getCartItemKey,
     isCartItemSelected,
     toggleCartItemSelected,
+    isCartGroupSelected,
+    toggleCartGroupSelected,
     getDetailText,
     submitPurchaseOrder,
   };

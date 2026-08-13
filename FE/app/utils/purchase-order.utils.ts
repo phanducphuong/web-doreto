@@ -57,3 +57,33 @@ export const getPurchaseOrderDetailText = (
     .filter(Boolean)
     .join(", ");
 };
+
+// Dòng mô tả cho CẢ GÓI combo: gộp giá trị từng thuộc tính của mọi sản phẩm trong gói.
+// VD 2 sản phẩm khác màu cùng size: "Màu sắc: Xanh Đậm, Xanh Nhạt, Kích cỡ: M";
+// nếu có màu trùng lặp giữa nhiều màu: "Màu sắc: Xanh Đậm ×2, Xanh Nhạt".
+export const getComboGroupDetailText = (
+  product: TExistedProduct,
+  optionValues: TOptionValue[],
+) => {
+  const options = product.productOptions || [];
+  if (!options.length || !optionValues.length) return "";
+
+  return options
+    .map((opt, index) => {
+      if (!opt) return null;
+      const counts = new Map<string, number>();
+      for (const optionValue of optionValues) {
+        const value = optionValue.productOptionNames?.[index];
+        if (value) counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      if (!counts.size) return null;
+      // Mọi sản phẩm cùng 1 giá trị (VD cùng size) → ghi gọn, không cần ×n
+      const allSame = counts.size === 1;
+      const text = [...counts.entries()]
+        .map(([value, count]) => (count > 1 && !allSame ? `${value} ×${count}` : value))
+        .join(", ");
+      return `${opt}: ${text}`;
+    })
+    .filter(Boolean)
+    .join(", ");
+};

@@ -8,36 +8,32 @@
       Thông tin đơn hàng
     </h2>
     <div v-if="props.step === 2" class="mb-2.5 space-y-3 sm:(mb-6 space-y-5) lg:(mb-8 space-y-6)">
-      <div
-        v-for="item in displayItems"
-        :key="getCartItemKey(item)"
-        class="flex items-start gap-2 sm:gap-3"
-      >
-        <!-- Tick chọn mua (chỉ chế độ giỏ hàng) -->
+      <div v-for="group in displayGroups" :key="group.key" class="flex items-start gap-2 sm:gap-3">
+        <!-- Tick chọn mua (chỉ chế độ giỏ hàng) — combo tick cả gói -->
         <button
           v-if="!isBuyNowMode"
           type="button"
-          :aria-label="isCartItemSelected(item) ? 'Bỏ chọn sản phẩm' : 'Chọn sản phẩm'"
+          :aria-label="isCartGroupSelected(group.lines) ? 'Bỏ chọn sản phẩm' : 'Chọn sản phẩm'"
           class="mt-7 h-5 w-5 flex-shrink-0 center-child cursor-pointer rounded border transition-colors sm:mt-9"
           :class="
-            isCartItemSelected(item)
+            isCartGroupSelected(group.lines)
               ? 'border-primary bg-primary text-white'
               : 'border-stone-300 bg-white text-transparent hover:border-primary/60'
           "
-          @click="toggleCartItemSelected(item)"
+          @click="toggleCartGroupSelected(group.lines)"
         >
           <Check class="size-3.5" />
         </button>
 
         <div
           class="flex flex-1 items-start gap-3 transition-opacity sm:gap-4"
-          :class="{ 'opacity-50': !isBuyNowMode && !isCartItemSelected(item) }"
+          :class="{ 'opacity-50': !isBuyNowMode && !isCartGroupSelected(group.lines) }"
         >
           <div
             class="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-surface-container-low sm:(h-24 w-24)"
           >
             <AtomsUiImageWithFallback
-              :src="item.optionValue.imageUrl || item.product?.thumbnailUrls?.[0]"
+              :src="group.item.optionValue.imageUrl || group.item.product?.thumbnailUrls?.[0]"
               :is-nuxt-image="false"
               img-class="object-cover w-full h-full"
             />
@@ -45,33 +41,33 @@
           <div class="min-w-0 flex-1 flex flex-col justify-center">
             <div class="flex items-center gap-1.5">
               <h4 class="line-clamp-2 text-sm font-bold text-on-surface sm:text-base">
-                {{ item.product.name }}
+                {{ group.item.product.name }}
               </h4>
             </div>
             <p class="mb-0.5 text-xs text-on-surface-variant sm:(mb-1 text-sm)">
-              {{ getDetailText(item.product, item.optionValue) }}
+              {{ getGroupDetailText(group) }}
             </p>
             <AtomsBadge
-              v-if="item.comboKey"
+              v-if="group.isCombo"
               type="success"
               class="mb-0.5 w-fit rounded-md !p-(x-1.5 y-0.5) !text-10px"
             >
-              {{ item.comboLabel || "Combo" }}
+              {{ group.item.comboLabel || "Combo" }}
             </AtomsBadge>
             <AtomsBadge
-              v-if="!isBuyNowMode && lastBuyNowKey === getCartItemKey(item)"
+              v-if="!isBuyNowMode && lastBuyNowKey === group.key"
               type="info"
               class="mb-0.5 w-fit rounded-md !p-(x-1.5 y-0.5) !text-10px"
             >
               Vừa chọn
             </AtomsBadge>
             <div class="flex items-center justify-between gap-2">
-              <!-- Dòng combo: số lượng cố định; dòng thường: cộng/trừ -->
+              <!-- Combo: số lượng cố định theo gói; dòng thường: cộng/trừ -->
               <div
-                v-if="item.comboKey"
+                v-if="group.isCombo"
                 class="rounded-full bg-success-container/30 px-2.5 py-1 text-10px font-semibold text-success sm:text-xs"
               >
-                Trong combo · 1 sản phẩm
+                Gồm {{ group.totalQuantity }} sản phẩm
               </div>
               <div
                 v-else
@@ -81,38 +77,38 @@
                   type="button"
                   aria-label="Giảm số lượng"
                   class="h-5 w-5 center-child cursor-pointer rounded-full bg-transparent text-stone-500 hover:text-primary disabled:(cursor-not-allowed opacity-40 hover:text-stone-500)"
-                  :disabled="item.quantity <= 1"
-                  @click="decreaseQty(item)"
+                  :disabled="group.item.quantity <= 1"
+                  @click="decreaseQty(group.item)"
                 >
                   <Minus class="size-3.5" />
                 </button>
                 <span class="w-6 text-center text-xs font-bold text-slate-600">
-                  {{ item.quantity }}
+                  {{ group.item.quantity }}
                 </span>
                 <button
                   type="button"
                   aria-label="Tăng số lượng"
                   class="h-5 w-5 center-child cursor-pointer rounded-full bg-transparent text-stone-500 hover:text-primary disabled:(cursor-not-allowed opacity-40 hover:text-stone-500)"
-                  :disabled="item.quantity >= (item.optionValue.stock ?? Infinity)"
-                  @click="increaseQty(item)"
+                  :disabled="group.item.quantity >= (group.item.optionValue.stock ?? Infinity)"
+                  @click="increaseQty(group.item)"
                 >
                   <Plus class="size-3.5" />
                 </button>
               </div>
               <span class="text-sm text-primary font-bold sm:text-base">
-                {{ formatPrice(getCartLineUnitPrice(item) * item.quantity) }}
+                {{ formatPrice(group.totalPrice) }}
               </span>
             </div>
           </div>
         </div>
 
-        <!-- Xóa khỏi giỏ (chỉ chế độ giỏ hàng) -->
+        <!-- Xóa khỏi giỏ (chỉ chế độ giỏ hàng) — combo xóa cả gói -->
         <button
           v-if="!isBuyNowMode"
           type="button"
           aria-label="Xóa sản phẩm khỏi giỏ"
           class="mt-0.5 h-6 w-6 flex-shrink-0 center-child cursor-pointer rounded-full bg-transparent text-stone-400 transition-colors hover:(bg-stone-100 text-danger)"
-          @click="removeItem(item)"
+          @click="removeItem(group.item)"
         >
           <X class="size-4" />
         </button>
@@ -152,15 +148,20 @@
 
 <script lang="ts" setup>
 import { Check, Minus, Plus, X } from "lucide-vue-next";
-import { getCartLineUnitPrice, type TCartItem } from "~/stores/purchase-order.store";
+import {
+  getCartLineUnitPrice,
+  groupCartLines,
+  type TCartDisplayGroup,
+  type TCartItem,
+} from "~/stores/purchase-order.store";
+import { getComboGroupDetailText } from "~/utils/purchase-order.utils";
 
 const emit = defineEmits(["nextTab", "submit"]);
 
 const {
   getDetailText,
-  getCartItemKey,
-  isCartItemSelected,
-  toggleCartItemSelected,
+  isCartGroupSelected,
+  toggleCartGroupSelected,
   addProductToCart,
   removeProductFromCart,
   removeCartItem,
@@ -172,17 +173,28 @@ const { checkoutItems, listCartProduct, buyNowItem, lastBuyNowKey } = storeToRef
 
 const isBuyNowMode = computed(() => Boolean(buyNowItem.value));
 
-// Danh sách hiển thị: mua ngay → 1 sản phẩm; giỏ hàng → toàn bộ giỏ, sản phẩm "vừa chọn" lên đầu
-const displayItems = computed<TCartItem[]>(() => {
-  if (buyNowItem.value) return [buyNowItem.value];
-  if (!lastBuyNowKey.value) return listCartProduct.value;
+// Danh sách hiển thị: mua ngay → 1 sản phẩm; giỏ hàng → gộp dòng combo thành 1 nhóm,
+// sản phẩm "vừa chọn" lên đầu
+const displayGroups = computed<TCartDisplayGroup[]>(() => {
+  const groups = groupCartLines(
+    buyNowItem.value ? [buyNowItem.value] : listCartProduct.value,
+  );
+  if (buyNowItem.value || !lastBuyNowKey.value) return groups;
 
-  return [...listCartProduct.value].sort(
+  return groups.sort(
     (a, b) =>
-      Number(getCartItemKey(b) === lastBuyNowKey.value) -
-      Number(getCartItemKey(a) === lastBuyNowKey.value),
+      Number(b.key === lastBuyNowKey.value) - Number(a.key === lastBuyNowKey.value),
   );
 });
+
+// Combo: liệt kê màu/size của mọi sản phẩm trong gói; dòng thường: như cũ
+const getGroupDetailText = (group: TCartDisplayGroup) =>
+  group.isCombo
+    ? getComboGroupDetailText(
+        group.item.product,
+        group.lines.map((line) => line.optionValue),
+      )
+    : getDetailText(group.item.product, group.item.optionValue);
 
 const increaseQty = (item: TCartItem) => {
   if (isBuyNowMode.value) {
