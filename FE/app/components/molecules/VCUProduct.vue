@@ -293,210 +293,152 @@
       <section class="space-y-5">
         <div class="mb-4 flex flex-wrap items-center gap-2">
           <p class="section-title">Cấu hình biến thể</p>
-          <AtomsButton
-            v-if="isEdit"
-            type="link"
-            class="ml-auto font-semibold"
-            @click="productForm.optionValues!.push(createDefaultOptionValue())"
-          >
-            Thêm lựa chọn
-          </AtomsButton>
         </div>
 
-        <div class="rounded-xl bg-#EFEBEB p-4">
-          <div class="mb-3 grid grid-cols-[230px_1fr] uppercase text-xs font-semibold gap-3">
-            <p>Tên tùy chọn</p>
-            <div class="flex items-center justify-between">
-              Giá trị
-              <AtomsButton
-                circle
-                type="ghost"
-                class="text-primary"
-                :icon="Plus"
-                @click="productOptionValues.push(createOptionDef())"
-              />
-            </div>
+        <!-- Mã sản phẩm -->
+        <div class="space-y-1">
+          <p class="text-xs font-bold uppercase tracking-[0.08em] text-#5f514f">Mã sản phẩm</p>
+          <AtomsFormInput
+            v-model="productCode"
+            :disabled="!isEdit"
+            placeholder="VD: S01"
+            class="!w-40 uppercase"
+            @update:model-value="productCode = String($event ?? '').toUpperCase()"
+          />
+          <p class="text-xs text-on-surface-variant">
+            Mã biến thể tự ghép: <span class="font-medium">{mã SP}-{size}-{mã màu}</span>
+          </p>
+        </div>
+
+        <!-- Màu sắc: tên + mã màu + ảnh -->
+        <div class="rounded-xl bg-#EFEBEB p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold uppercase tracking-[0.06em]">
+              Màu sắc <span class="text-#8B7B78 normal-case">(tên · mã · ảnh)</span>
+            </p>
+            <AtomsButton v-if="isEdit" type="link" class="font-semibold" @click="addColorDef">
+              + Thêm màu
+            </AtomsButton>
           </div>
           <div
-            v-for="(item, optionIndex) in productOptionValues"
-            :key="item._uid"
-            class="grid gap-3 md:grid-cols-[230px_1fr] mb-3 last:mb-0"
+            v-for="(color, ci) in colorDefs"
+            :key="ci"
+            class="flex items-center gap-2"
           >
-            <AtomsFormInput
-              v-model="item.name"
+            <AtomsSingleImagePicker
+              class="!w-12 !h-12 flex-shrink-0"
+              :file="color.imageFile?.[0] || null"
+              :image-url="color.imageUrl || ''"
               :disabled="!isEdit"
-              :error="formError.productOptions"
-              placeholder="Nhập thông số"
+              pick-mode
+              @pick="openColorImagePicker(ci)"
             />
-            <div class="flex items-center gap-2">
-              <AtomsFormTagInput
-                v-model="item.value"
-                class="flex-1"
-                :disabled="!isEdit"
-                :error="formError.productOptions"
-                placeholder="Nhập thông số"
-              />
-              <AtomsButton
-                circle
-                type="ghost"
-                class="text-danger"
-                :icon="Trash"
-                :disabled="productOptionValues.length <= 1"
-                @click="removeProductOptionValue(optionIndex)"
-              ></AtomsButton>
-            </div>
+            <AtomsFormInput
+              v-model="color.name"
+              :disabled="!isEdit"
+              placeholder="Tên màu (VD: Xanh Nhạt)"
+              class="flex-1"
+            />
+            <AtomsFormInput
+              v-model="color.code"
+              :disabled="!isEdit"
+              placeholder="Mã"
+              class="!w-20 uppercase"
+              @update:model-value="color.code = String($event ?? '').toUpperCase()"
+            />
+            <AtomsButton
+              v-if="isEdit"
+              circle
+              type="ghost"
+              class="text-danger"
+              :icon="Trash"
+              @click="removeColorDef(ci)"
+            />
           </div>
+          <p v-if="!colorDefs.length" class="text-xs text-on-surface-variant">
+            Chưa có màu. Bấm “+ Thêm màu”.
+          </p>
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="w-full min-w-[920px] border-collapse">
-            <thead>
-              <tr
-                class="border-b border-#E4D4D1 text-left text-xs uppercase tracking-[0.06em] text-#8B7B78"
-              >
-                <th class="py-3">Ảnh</th>
-                <th class="py-3">Biến thể</th>
-                <th class="py-3">Mã biến thể</th>
-                <th class="py-3">Giá bán</th>
-                <th class="py-3">Giá gốc</th>
-                <th class="py-3">Kho</th>
-                <th class="py-3 text-right">Tác vụ</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(value, id) in productForm.optionValues"
-                :key="value._id || id"
-                class="border-b border-#EEE5E3 align-top"
-              >
-                <td class="py-4 pr-3">
-                  <AtomsSingleImagePicker
-                    class="!w-12 !h-12"
-                    :file="value.imageFile?.[0] || null"
-                    :image-url="value.imageUrl || ''"
-                    :disabled="!isEdit"
-                    pick-mode
-                    @pick="openVariantImagePicker(id)"
-                  />
-                  <p v-if="formError.optionValues?.[id]?.imageUrl" class="mt-1 text-xs text-danger">
-                    {{ formError.optionValues?.[id]?.imageUrl }}
-                  </p>
-                </td>
-                <td class="py-4 pr-3 w-1/5">
-                  <MoleculesCommonPopover placement="bottom-start">
-                    <p class="font-semibold text-xs cursor-pointer">
-                      {{
-                        value.productOptionNames?.filter(Boolean).join(" / ") ||
-                        `Lựa chọn ${id + 1}`
-                      }}
-                    </p>
-                    <template #content>
-                      <div class="w-[320px] max-h-[300px] overflow-y-auto space-y-4 p-1">
-                        <template v-if="variantOptionDefinitions.length">
-                          <div
-                            v-for="(option, optionIndex) in variantOptionDefinitions"
-                            :key="`${option.name}-${optionIndex}`"
-                            class="space-y-2"
-                          >
-                            <p
-                              class="text-[10px] font-bold uppercase tracking-widest text-stone-400"
-                            >
-                              {{ option.name }}
-                            </p>
-                            <div class="flex flex-wrap gap-2">
-                              <button
-                                v-for="optionValue in option.values"
-                                :key="`${option.name}-${optionValue}`"
-                                type="button"
-                                :disabled="!isEdit"
-                                class="px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm border border-#f0d9d3 disabled:(opacity-50 cursor-not-allowed)"
-                                :class="
-                                  isOptionPicked(id, optionIndex, optionValue)
-                                    ? 'ring-(primary 2) bg-primary/5 text-on-surface'
-                                    : 'bg-surface text-stone-500 hover:ring-(outline-variant/60 1)'
-                                "
-                                @click.stop="toggleOptionValue(id, optionIndex, optionValue)"
-                              >
-                                {{ optionValue }}
-                              </button>
-                            </div>
-                          </div>
-                        </template>
-                        <p v-else class="text-xs text-on-surface-variant">
-                          Chưa có cấu hình tùy chọn. Hãy nhập tên và giá trị ở phía trên.
-                        </p>
-                      </div>
-                    </template>
-                  </MoleculesCommonPopover>
-                  <p v-if="getOptionValueError(id)" class="mt-1 text-xs text-danger">
-                    {{ getOptionValueError(id) }}
-                  </p>
-                  <p v-if="duplicateOptionValueIndexes.has(id)" class="mt-1 text-xs text-danger">
-                    Tổ hợp biến thể trùng với dòng khác
-                  </p>
-                </td>
-                <td class="py-4 pr-3 w-36">
-                  <AtomsFormInput
-                    v-model="value.code"
-                    :disabled="!isEdit"
-                    placeholder="VD: SP-001-RED-L"
-                    maxlength="100"
-                    :error="formError.optionValues?.[id]?.code"
-                  />
-                </td>
-                <td class="py-4 pr-3">
-                  <AtomsFormInput
-                    v-model="value.price"
-                    :disabled="!isEdit"
-                    placeholder="Giá bán"
-                    :format="formatPrice"
-                    :parse="parsePrice"
-                    :error="formError.optionValues?.[id]?.price"
-                  />
-                </td>
-                <td class="py-4 pr-3">
-                  <AtomsFormInput
-                    v-model="value.originalPrice"
-                    :disabled="!isEdit"
-                    placeholder="Giá gốc"
-                    :format="formatPrice"
-                    :parse="parsePrice"
-                    :error="formError.optionValues?.[id]?.originalPrice"
-                  />
-                </td>
-                <td class="py-4 pr-3 w-30">
-                  <AtomsFormInput
-                    v-model="value.stock"
-                    :disabled="!isEdit"
-                    placeholder="Số lượng"
-                    type="number"
-                    :error="formError.optionValues?.[id]?.stock"
-                  />
-                </td>
-                <td class="py-4 text-right">
-                  <div class="flex items-center justify-end gap-1">
-                    <AtomsButton
-                      v-if="isEdit"
-                      class="w-8 h-8"
-                      type="ghost"
-                      circle
-                      :icon="Copy"
-                      @click="duplicateOptionValue(id)"
+        <!-- Kích cỡ: mặc định 6 -->
+        <div class="rounded-xl bg-#EFEBEB p-4 space-y-2">
+          <p class="text-xs font-semibold uppercase tracking-[0.06em]">
+            Kích cỡ <span class="text-#8B7B78 normal-case">(mặc định 6, xóa bớt nếu cần)</span>
+          </p>
+          <AtomsFormTagInput
+            v-model="sizeDefs"
+            :disabled="!isEdit"
+            placeholder="Nhập size rồi Enter (VD: M, L, XL…)"
+          />
+        </div>
+
+        <!-- Bảng biến thể TỰ SINH (màu × size). Giá lấy theo combo "1 quần". -->
+        <div>
+          <div class="mb-2 flex flex-wrap items-center gap-2 text-xs text-on-surface-variant">
+            <span>
+              Tự sinh <span class="font-semibold text-on-surface">{{ variantRows.length }}</span>
+              biến thể (màu × size). Giá bán lấy theo bậc combo “1 quần”.
+            </span>
+            <div v-if="isEdit && variantRows.length" class="ml-auto flex items-center gap-2">
+              <span>Điền nhanh kho:</span>
+              <AtomsFormInput
+                v-model="bulkStock"
+                type="number"
+                placeholder="SL"
+                class="!w-20"
+              />
+              <AtomsButton type="link" class="font-semibold" @click="applyBulkStock">Áp dụng</AtomsButton>
+            </div>
+          </div>
+
+          <div v-if="variantRows.length" class="overflow-x-auto">
+            <table class="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr
+                  class="border-b border-#E4D4D1 text-left text-xs uppercase tracking-[0.06em] text-#8B7B78"
+                >
+                  <th class="py-3">Ảnh</th>
+                  <th class="py-3">Biến thể</th>
+                  <th class="py-3">Mã (SKU)</th>
+                  <th class="py-3 w-32">Kho</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in variantRows"
+                  :key="row.key"
+                  class="border-b border-#EEE5E3 align-middle"
+                >
+                  <td class="py-3 pr-3">
+                    <div class="h-11 w-11 overflow-hidden rounded-md border border-#EEE5E3 bg-surface-container-low">
+                      <img
+                        v-if="row.previewUrl"
+                        :src="row.previewUrl"
+                        alt=""
+                        class="h-full w-full object-cover"
+                      />
+                    </div>
+                  </td>
+                  <td class="py-3 pr-3 text-sm font-semibold">{{ row.label }}</td>
+                  <td class="py-3 pr-3 font-mono text-xs text-primary">{{ row.sku || "—" }}</td>
+                  <td class="py-3 pr-3 w-32">
+                    <AtomsFormInput
+                      v-model="stockMap[row.key]"
+                      :disabled="!isEdit"
+                      type="number"
+                      placeholder="Số lượng"
                     />
-                    <AtomsButton
-                      v-if="isEdit"
-                      class="w-8 h-8"
-                      type="ghost"
-                      circle
-                      :icon="X"
-                      :disabled="(productForm.optionValues || []).length <= 1"
-                      @click="deleteOptionValue(id)"
-                    />
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p
+            v-else
+            class="rounded-lg border border-dashed border-outline-variant p-4 text-center text-xs text-on-surface-variant"
+          >
+            Thêm ít nhất 1 màu và 1 size để tự sinh biến thể.
+          </p>
         </div>
       </section>
 
@@ -914,6 +856,206 @@ const sanitizeComboTiers = () => {
     .sort((a, b) => a.quantity - b.quantity);
 };
 
+// ==== Cấu hình biến thể theo MÀU × SIZE (SKU tự ghép, ảnh theo màu) ====
+type TColorDef = { name: string; code: string; imageUrl: string; imageFile: File[] };
+const DEFAULT_SIZES = ["M", "L", "XL", "2XL", "3XL", "4XL"];
+const COLOR_DIM_RE = /màu|mau sac|color/i;
+
+const productCode = ref("");
+const colorDefs = ref<TColorDef[]>([]);
+const sizeDefs = ref<string[]>([...DEFAULT_SIZES]);
+const stockMap = ref<Record<string, number | string>>({});
+const bulkStock = ref<number | string>("");
+// Giữ _id biến thể cũ theo tổ hợp màu|size để cập nhật không xóa nhầm (tránh lỗi FK đơn hàng)
+const existingVariantIds = ref<Map<string, string>>(new Map());
+
+const createColorDef = (): TColorDef => ({ name: "", code: "", imageUrl: "", imageFile: [] });
+const addColorDef = () => colorDefs.value.push(createColorDef());
+const removeColorDef = (index: number) => colorDefs.value.splice(index, 1);
+
+const openColorImagePicker = async (index: number) => {
+  if (!isEdit.value) return;
+  const color = colorDefs.value[index];
+  if (!color) return;
+  const res = await openImageFromProduct();
+  if (!res) return;
+  if (res.url) {
+    color.imageUrl = res.url;
+    color.imageFile = [];
+  } else if (res.file) {
+    color.imageFile = [res.file];
+  }
+};
+
+// Khóa ổn định cho từng tổ hợp màu×size
+const variantKey = (colorName: string, size: string | null) => `${colorName}|||${size ?? ""}`;
+
+// Preview ảnh màu (file mới -> objectURL; đã upload -> url)
+const colorPreviewMap = ref<Map<File, string>>(new Map());
+const colorPreviewUrl = (color: TColorDef): string => {
+  const file = color.imageFile?.[0];
+  if (file) {
+    let url = colorPreviewMap.value.get(file);
+    if (!url) {
+      url = URL.createObjectURL(file);
+      colorPreviewMap.value.set(file, url);
+    }
+    return url;
+  }
+  return color.imageUrl || "";
+};
+
+const variantRows = computed(() => {
+  const rows: {
+    key: string;
+    color: string;
+    size: string | null;
+    sku: string;
+    label: string;
+    previewUrl: string;
+    colorRef: TColorDef;
+  }[] = [];
+  const sizes = sizeDefs.value.length ? sizeDefs.value : [null];
+  for (const color of colorDefs.value) {
+    if (!color.name?.trim()) continue;
+    for (const size of sizes) {
+      const sku = [productCode.value, size, color.code].filter(Boolean).join("-");
+      rows.push({
+        key: variantKey(color.name, size),
+        color: color.name,
+        size,
+        sku,
+        label: size ? `${color.name} / ${size}` : color.name,
+        previewUrl: colorPreviewUrl(color),
+        colorRef: color,
+      });
+    }
+  }
+  return rows;
+});
+
+const applyBulkStock = () => {
+  const val = Number(bulkStock.value);
+  if (!Number.isFinite(val)) return;
+  variantRows.value.forEach((row) => {
+    stockMap.value[row.key] = val;
+  });
+};
+
+// Upload ảnh MÀU (mỗi màu 1 lần) rồi gán url cho color def
+const uploadColorImages = async () => {
+  const pending = colorDefs.value.filter((c) => c.imageFile?.length);
+  if (!pending.length) return;
+  const files = await Promise.all(
+    pending.map((c) => compressImageFile(c.imageFile[0]!, "option")),
+  );
+  const res = await $uploadRepository.uploadFiles(files, { preset: "option" });
+  pending.forEach((c, i) => {
+    c.imageUrl = res.data[i]?.url || c.imageUrl;
+    c.imageFile = [];
+  });
+};
+
+// Giá bán/gốc lấy theo bậc combo "1 quần" (mua lẻ); không có tier 1 -> đơn giá bậc rẻ nhất
+const deriveBasePrice = (): { price: number; originalPrice?: number } => {
+  const tiers = productForm.value.comboTiers || [];
+  const one = tiers.find((t) => Number(t.quantity) === 1);
+  let price = 0;
+  if (one) price = Number(one.price) || 0;
+  else if (tiers.length)
+    price = Math.min(...tiers.map((t) => Math.round(Number(t.price) / Number(t.quantity))));
+  const original =
+    one?.originalPrice && Number(one.originalPrice) > price ? Number(one.originalPrice) : undefined;
+  return { price, originalPrice: original };
+};
+
+// Dựng optionValues từ định nghĩa màu/size + kho + giá suy ra từ combo
+const buildOptionValuesFromDefs = () => {
+  const { price, originalPrice } = deriveBasePrice();
+  const hasSize = sizeDefs.value.length > 0;
+  productForm.value.productOptions = hasSize ? ["Màu sắc", "Kích cỡ"] : ["Màu sắc"];
+  productForm.value.optionValues = variantRows.value.map((row) => {
+    const id = existingVariantIds.value.get(row.key);
+    return {
+      ...(id ? { _id: id } : {}),
+      code: row.sku || undefined,
+      imageUrl: row.colorRef.imageUrl || "",
+      imageFile: [] as File[],
+      price,
+      originalPrice,
+      stock: Math.max(0, Math.floor(Number(stockMap.value[row.key]) || 0)),
+      productOptionNames: hasSize ? [row.color, row.size as string] : [row.color],
+    };
+  });
+};
+
+const validateVariantDefs = (): string | null => {
+  if (!colorDefs.value.length) return "Cần ít nhất 1 màu.";
+  if (colorDefs.value.some((c) => !c.name?.trim())) return "Mỗi màu cần có tên.";
+  if (!variantRows.value.length) return "Cần ít nhất 1 màu và 1 size.";
+  const { price } = deriveBasePrice();
+  if (price <= 0) return "Giá lấy theo combo — hãy thêm bậc combo (VD “1 quần”) có giá > 0.";
+  return null;
+};
+
+// Đọc ngược sản phẩm cũ -> productCode/colorDefs/sizeDefs/stockMap/_id
+const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
+  productCode.value = "";
+  colorDefs.value = [];
+  sizeDefs.value = [...DEFAULT_SIZES];
+  stockMap.value = {};
+  existingVariantIds.value = new Map();
+  if (!data?.productOptions?.length) return;
+
+  const colorIdx = data.productOptions.findIndex((n) => COLOR_DIM_RE.test(n));
+  const cIdx = colorIdx >= 0 ? colorIdx : 0;
+  const sIdx = data.productOptions.findIndex((_, i) => i !== cIdx);
+  const ovs = data.optionValues || [];
+
+  const firstSku = ovs.find((o) => o.code)?.code || "";
+  const skuParts = firstSku.split("-");
+  if (skuParts.length >= 2) productCode.value = skuParts[0]!.toUpperCase();
+
+  const colorMap = new Map<string, TColorDef>();
+  const codeByColor = new Map<string, string>();
+  for (const o of ovs) {
+    const cname = o.productOptionNames?.[cIdx];
+    if (!cname) continue;
+    if (!colorMap.has(cname)) {
+      colorMap.set(cname, { name: cname, code: "", imageUrl: o.imageUrl || "", imageFile: [] });
+    } else if (!colorMap.get(cname)!.imageUrl && o.imageUrl) {
+      colorMap.get(cname)!.imageUrl = o.imageUrl;
+    }
+    if (o.code && !codeByColor.has(cname)) {
+      const parts = o.code.split("-");
+      // Thứ tự SKU: {mã SP}-{size}-{mã màu} → mã màu là phần cuối
+      if (parts.length >= 2) codeByColor.set(cname, parts[parts.length - 1]!.toUpperCase());
+    }
+  }
+  colorMap.forEach((def, cname) => {
+    def.code = codeByColor.get(cname) || "";
+  });
+  colorDefs.value = [...colorMap.values()];
+
+  if (sIdx >= 0) {
+    const sizes = [
+      ...new Set(ovs.map((o) => o.productOptionNames?.[sIdx]).filter(Boolean) as string[]),
+    ];
+    sizeDefs.value = sizes;
+  } else {
+    sizeDefs.value = [];
+  }
+
+  for (const o of ovs) {
+    const cname = o.productOptionNames?.[cIdx];
+    if (!cname) continue;
+    const size = sIdx >= 0 ? o.productOptionNames?.[sIdx] ?? null : null;
+    const key = variantKey(cname, size);
+    stockMap.value[key] = Number(o.stock ?? 0);
+    if (o._id) existingVariantIds.value.set(key, o._id);
+  }
+};
+
 const buildVariantOptionValues = (data?: Partial<TExistedProduct>) => {
   if (!data?.productOptions?.length) return [createOptionDef()];
 
@@ -956,11 +1098,6 @@ const errorList = computed(() => {
   if (formError.value?.imageUrls) errors.push(formError.value.imageUrls);
   if (formError.value?.thumbnailUrls) errors.push(formError.value.thumbnailUrls);
   if (formError.value?.productOptions) errors.push(formError.value.productOptions);
-  if (duplicateOptionValueIndexes.value.size > 0) {
-    errors.push(
-      `Có ${duplicateOptionValueIndexes.value.size} biến thể bị trùng tổ hợp (dòng: ${[...duplicateOptionValueIndexes.value].map((i) => i + 1).join(", ")})`,
-    );
-  }
   formError.value?.optionValues?.forEach((item: any, index: number) => {
     if (item?.imageUrl) errors.push(`Lựa chọn ${index + 1}: ${item.imageUrl}`);
     if (item?.code) errors.push(`Lựa chọn ${index + 1}: ${item.code}`);
@@ -1080,16 +1217,13 @@ const appendSelectionErrors = (errors: any) => {
 const onSubmit = async () => {
   try {
     loadingStates.value.upsert = true;
-    syncVariantOptionsToForm();
     sanitizeComboTiers();
-    productForm.value.optionValues?.forEach((optionValue) => {
-      if (typeof optionValue.code === "string") {
-        const trimmedCode = optionValue.code.trim();
-        optionValue.code = trimmedCode || undefined;
-      }
-    });
+    // Dựng biến thể màu×size từ định nghĩa (SKU tự ghép, giá theo combo, kho)
+    buildOptionValuesFromDefs();
+
     const errors = validateProductForm(productForm.value);
-    appendSelectionErrors(errors);
+    const variantError = validateVariantDefs();
+    if (variantError) errors.productOptions = variantError;
 
     // Slug: sửa SP thì bắt buộc có slug; nếu BE báo trùng thì chặn lưu.
     const slugRaw = (productForm.value.slug || "").trim();
@@ -1100,8 +1234,7 @@ const onSubmit = async () => {
       errors.slug = "Slug đã tồn tại, vui lòng chọn slug khác";
     }
 
-    // Duplicate check độc lập – không phụ thuộc vào errors mutation
-    if (duplicateOptionValueIndexes.value.size > 0 || hasError(errors)) {
+    if (hasError(errors)) {
       formError.value = errors;
       const firstError = errorList.value[0];
       toast.error({
@@ -1111,6 +1244,10 @@ const onSubmit = async () => {
       });
       return;
     }
+
+    // Upload ảnh theo màu (mỗi màu 1 lần) rồi dựng lại biến thể để gán URL ảnh màu
+    await uploadColorImages();
+    buildOptionValuesFromDefs();
 
     // Ghi nhận ảnh đại diện trước khi upload (key có thể là url cũ hoặc file mới)
     const featuredKeyAtSubmit = effectiveFeaturedKey.value;
@@ -1440,7 +1577,7 @@ watchEffect(() => {
     };
     // Ảnh đầu tiên hiện tại chính là ảnh đại diện (quy ước imageUrls[0])
     featuredImageKey.value = defaultData?.imageUrls?.[0] || "";
-    productOptionValues.value = buildVariantOptionValues(defaultData);
+    parseVariantDefs(defaultData);
   } else {
     productForm.value = {
       categoryIds: [],
@@ -1456,7 +1593,7 @@ watchEffect(() => {
       optionValues: [createDefaultOptionValue()],
     };
     featuredImageKey.value = "";
-    productOptionValues.value = [createOptionDef()];
+    parseVariantDefs(undefined);
   }
 
   // Mở sản phẩm nào cũng cho sửa ngay (khỏi bấm "Chỉnh sửa").
@@ -1508,6 +1645,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   thumbnailPreviewUrls.value.forEach((url) => URL.revokeObjectURL(url));
   revokeFeaturedFilePreview();
+  colorPreviewMap.value.forEach((url) => URL.revokeObjectURL(url));
+  colorPreviewMap.value.clear();
   if (slugCheckTimer) clearTimeout(slugCheckTimer);
 });
 
