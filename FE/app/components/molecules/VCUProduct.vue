@@ -1072,8 +1072,10 @@ const parseVariantDefs = (data?: Partial<TExistedProduct>) => {
     }
     if (o.code && !codeByColor.has(cname)) {
       const parts = o.code.split("-");
-      // Thứ tự SKU: {mã SP}-{size}-{mã màu} → mã màu là phần cuối
-      if (parts.length >= 2) codeByColor.set(cname, parts[parts.length - 1]!.toUpperCase());
+      // SKU: {mã SP}-{size}-{mã màu}. Mã màu là PHẦN CÒN LẠI (giữ được dấu "-").
+      // Có size: bỏ 2 đoạn đầu (mã SP + size); không size: bỏ 1 đoạn đầu (mã SP).
+      const skip = sIdx >= 0 ? 2 : 1;
+      if (parts.length > skip) codeByColor.set(cname, parts.slice(skip).join("-").toUpperCase());
     }
   }
   colorMap.forEach((def, cname) => {
