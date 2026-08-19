@@ -24,6 +24,11 @@ export class CreateProductDto {
   @IsString()
   description?: string;
 
+  // Tiêu đề trang (og:title) hiện khi chia sẻ link SP lên FB/Zalo. Bỏ trống -> dùng tên SP.
+  @IsOptional()
+  @IsString()
+  pageTitle?: string;
+
   @IsOptional()
   @IsArray()
   @IsUUID(undefined, { each: true })

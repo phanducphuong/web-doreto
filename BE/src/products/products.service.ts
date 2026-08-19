@@ -216,6 +216,7 @@ export class ProductsService {
         name: createProductDto.name,
         slug: resolvedSlug,
         description: productData.description,
+        pageTitle: productData.pageTitle,
         productOptions: productData.productOptions ?? [],
         comboTiers: (createProductDto.comboTiers ??
           []) as unknown as Prisma.InputJsonValue,

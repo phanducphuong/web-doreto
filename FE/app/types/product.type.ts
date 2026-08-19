@@ -31,6 +31,8 @@ export type TProduct = {
   name: string;
   // Slug SEO cho URL /san-pham/:slug (do BE sinh, cố định sau khi đặt)
   slug?: string;
+  // Tiêu đề trang (og:title) hiện khi chia sẻ link SP lên FB/Zalo. Bỏ trống -> dùng tên SP.
+  pageTitle?: string;
   description?: string;
   descriptionFrameId?: string | null;
   descriptionFrame?: TActiveImageFrame | null;

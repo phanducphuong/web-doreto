@@ -119,6 +119,9 @@ model Product {
   // dữ liệu cũ; service luôn gán slug khi tạo/sửa nên SP mới luôn có slug.
   slug           String?  @unique
   description    String?
+  // Tiêu đề trang (thẻ <title> + og:title) khi chia sẻ link SP lên FB/Zalo.
+  // Bỏ trống -> dùng tên sản phẩm.
+  pageTitle      String?
   normalizedName String   @default("")
   minPrice       Float    @default(0)
   maxPrice       Float    @default(0)

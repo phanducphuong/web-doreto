@@ -105,6 +105,18 @@
           </p>
         </AtomsFormItem>
 
+        <AtomsFormItem label="Tiêu đề trang (khi chia sẻ Facebook/Zalo)" class-label="text-on-surface">
+          <AtomsFormInput
+            v-model="productForm.pageTitle"
+            :disabled="!isEdit"
+            placeholder="vd: SHORT JEANS - 135K"
+          />
+          <p class="mt-1 text-xs text-on-surface-variant">
+            Dòng chữ đậm hiện dưới link khi dán vào bài viết Facebook. Bỏ trống sẽ dùng tên sản
+            phẩm.
+          </p>
+        </AtomsFormItem>
+
         <div class="mt-4 space-y-4">
           <AtomsFormItem label="Khung ảnh mô tả">
             <MoleculesProductDescriptionFramePicker

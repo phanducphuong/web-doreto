@@ -287,6 +287,13 @@ const { data: product } = await useAsyncData(`product-${slug}`, () =>
   $productRepository.getBySlug(slug),
 );
 
+// Tiêu đề trang (thẻ <title> + og:title) — admin đặt trong form sửa SP, bỏ trống
+// dùng tên SP. Trang render phía server nên Facebook/Zalo đọc được khi chia sẻ link.
+const pageTitle = computed(
+  () => product.value?.pageTitle?.trim() || product.value?.name || "Doreto — Thời trang nam",
+);
+useSeoMeta({ title: pageTitle, ogTitle: pageTitle });
+
 // Sản phẩm tương tự tra theo id thật của SP vừa lấy (route không còn kèm id)
 const productId = computed(() => product.value?._id as string | undefined);
 const { data: relatedProductsData } = await useAsyncData(
